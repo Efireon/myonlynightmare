@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"math"
+
 	"github.com/go-gl/gl/v4.1-core/gl"
 
 	"nightmare/pkg/config"
@@ -235,8 +237,6 @@ func (r *ASCIIRenderer) Render(scene *SceneData) {
 	gl.DrawElements(gl.TRIANGLES, 6, gl.UNSIGNED_INT, nil)
 }
 
-// sceneToASCII converts scene data to ASCII representation
-// sceneToASCII converts scene data to ASCII representation
 func (r *ASCIIRenderer) sceneToASCII(scene *SceneData) []byte {
 	result := make([]byte, r.width*r.height)
 
@@ -265,11 +265,26 @@ func (r *ASCIIRenderer) sceneToASCII(scene *SceneData) []byte {
 			pixel := scene.Pixels[y][x]
 
 			// Map intensity to ASCII character index
-			asciiIndex := int(pixel.Intensity * float64(len(r.asciiGradient)-1))
+			// Применяем нелинейное преобразование для лучшей видимости
+			adjustedIntensity := math.Pow(pixel.Intensity, 0.8)
+
+			asciiIndex := int(adjustedIntensity * float64(len(r.asciiGradient)-1))
+
+			// Ограничиваем индекс в пределах допустимого диапазона
+			if asciiIndex < 0 {
+				asciiIndex = 0
+			} else if asciiIndex >= len(r.asciiGradient) {
+				asciiIndex = len(r.asciiGradient) - 1
+			}
 
 			// Convert to grayscale intensity (0-255)
 			// More dense character = higher intensity
 			intensity := byte(asciiIndex * 255 / (len(r.asciiGradient) - 1))
+
+			// Повышаем минимальную яркость, чтобы даже слабые объекты были видны
+			if intensity > 0 && intensity < 50 {
+				intensity = 50
+			}
 
 			// Store in result buffer
 			result[y*r.width+x] = intensity

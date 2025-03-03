@@ -96,6 +96,9 @@ func (e *Engine) Run() {
 	// Setup initial world
 	e.procedural.GenerateInitialWorld()
 
+	// Установка сцены для рейтрейсера
+	e.raytracer.SetScene(e.procedural.GetCurrentScene())
+
 	// Main game loop
 	for e.isRunning && !e.window.ShouldClose() {
 		currentTime := time.Now()
@@ -129,19 +132,68 @@ func (e *Engine) Run() {
 }
 
 // processInput handles user input
+// processInput handles user input
 func (e *Engine) processInput() {
 	// Close the game when ESC is pressed
 	if e.window.GetKey(glfw.KeyEscape) == glfw.Press {
 		e.isRunning = false
 	}
 
-	// Other input handling...
+	// Параметры движения камеры
+	moveSpeed := 0.2    // Скорость движения
+	rotateSpeed := 0.02 // Скорость поворота
+
+	// Создаем вектор движения
+	movement := Vector3{X: 0, Y: 0, Z: 0}
+
+	// Обработка клавиш движения
+	if e.window.GetKey(glfw.KeyW) == glfw.Press {
+		movement.Z += moveSpeed // Вперед
+	}
+	if e.window.GetKey(glfw.KeyS) == glfw.Press {
+		movement.Z -= moveSpeed // Назад
+	}
+	if e.window.GetKey(glfw.KeyA) == glfw.Press {
+		movement.X -= moveSpeed // Влево
+	}
+	if e.window.GetKey(glfw.KeyD) == glfw.Press {
+		movement.X += moveSpeed // Вправо
+	}
+	if e.window.GetKey(glfw.KeySpace) == glfw.Press {
+		movement.Y += moveSpeed // Вверх
+	}
+	if e.window.GetKey(glfw.KeyLeftControl) == glfw.Press || e.window.GetKey(glfw.KeyRightControl) == glfw.Press {
+		movement.Y -= moveSpeed // Вниз
+	}
+
+	// Обработка клавиш поворота
+	yawDelta := 0.0
+	pitchDelta := 0.0
+
+	if e.window.GetKey(glfw.KeyRight) == glfw.Press {
+		yawDelta += rotateSpeed // Поворот вправо
+	}
+	if e.window.GetKey(glfw.KeyLeft) == glfw.Press {
+		yawDelta -= rotateSpeed // Поворот влево
+	}
+	if e.window.GetKey(glfw.KeyUp) == glfw.Press {
+		pitchDelta -= rotateSpeed // Поворот вверх
+	}
+	if e.window.GetKey(glfw.KeyDown) == glfw.Press {
+		pitchDelta += rotateSpeed // Поворот вниз
+	}
+
+	// Обновляем камеру
+	e.raytracer.UpdateCamera(movement, yawDelta, pitchDelta)
 }
 
 // update updates the game state
 func (e *Engine) update(deltaTime float64) {
 	// Update procedural generation
 	e.procedural.Update(deltaTime)
+
+	// Обновляем сцену в рейтрейсере после изменений процедурной генерации
+	e.raytracer.SetScene(e.procedural.GetCurrentScene())
 
 	// Update audio
 	e.audioEngine.Update(deltaTime)
