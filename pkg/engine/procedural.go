@@ -4,7 +4,7 @@ import (
 	"math"
 	"time"
 
-	"nightmare/internal/math/noise"
+	noise "nightmare/internal/math"
 	"nightmare/pkg/config"
 )
 
@@ -208,7 +208,7 @@ func (pg *ProceduralGenerator) populateScene() {
 	terrainHeight := pg.currentScene.Terrain.Height
 
 	// Generate trees
-	numTrees := pg.config.TreeDensity * terrainWidth * terrainHeight / 10000
+	numTrees := int(pg.config.TreeDensity) * terrainWidth * terrainHeight / 10000
 
 	for i := 0; i < int(numTrees); i++ {
 		// Pick a random position on the terrain
@@ -255,7 +255,7 @@ func (pg *ProceduralGenerator) populateScene() {
 	}
 
 	// Generate rocks
-	numRocks := pg.config.RockDensity * terrainWidth * terrainHeight / 10000
+	numRocks := int(pg.config.RockDensity) * terrainWidth * terrainHeight / 10000
 
 	for i := 0; i < int(numRocks); i++ {
 		// Similar logic as for trees

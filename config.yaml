@@ -1,0 +1,45 @@
+graphics:
+  width: 800
+  height: 600
+  fullscreen: false
+  vsync: true
+  framerate: 60
+  display_mode: ascii
+
+audio:
+  enabled: true
+  volume: 0.8
+  enable_mic: true
+  mic_sensitivity: 0.7
+
+raytracer:
+  width: 120
+  height: 60
+  num_threads: 4
+  max_bounces: 1
+  shadows_enabled: true
+
+renderer:
+  width: 120
+  height: 60
+  charset: " .:-=+*#%@"
+  color_mode: grayscale
+
+procedural:
+  terrain_size: 128
+  tree_density: 5.0
+  rock_density: 3.0
+  detail_level: 3
+  seed: 0  # 0 means random seed
+
+ai:
+  enabled: true
+  difficulty: 0.5
+  adaptation_rate: 0.2
+  mic_enabled: true
+  behavior_analysis: true
+
+mods:
+  enabled: true
+  mods_folder: mods
+  enabled_mods: []
