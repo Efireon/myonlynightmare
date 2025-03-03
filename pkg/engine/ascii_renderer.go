@@ -202,8 +202,13 @@ func (r *ASCIIRenderer) compileShaderProgram() uint32 {
 }
 
 // Render renders the scene using ASCII characters
+// Render renders the scene using ASCII characters
 func (r *ASCIIRenderer) Render(scene *SceneData) {
+	// Проверяем, что сцена существует и содержит данные
 	if scene == nil {
+		// Очищаем экран и выходим
+		gl.ClearColor(0, 0, 0, 1)
+		gl.Clear(gl.COLOR_BUFFER_BIT)
 		return
 	}
 
@@ -231,11 +236,31 @@ func (r *ASCIIRenderer) Render(scene *SceneData) {
 }
 
 // sceneToASCII converts scene data to ASCII representation
+// sceneToASCII converts scene data to ASCII representation
 func (r *ASCIIRenderer) sceneToASCII(scene *SceneData) []byte {
 	result := make([]byte, r.width*r.height)
 
-	for y := 0; y < scene.Height; y++ {
-		for x := 0; x < scene.Width; x++ {
+	// Проверка, что scene не nil и содержит данные
+	if scene == nil || len(scene.Pixels) == 0 {
+		// Заполняем пустыми символами
+		for i := range result {
+			result[i] = 0 // Нулевая интенсивность (пустой символ)
+		}
+		return result
+	}
+
+	// Проверка размеров сцены для предотвращения выхода за границы
+	height := min(scene.Height, len(scene.Pixels))
+
+	for y := 0; y < height; y++ {
+		// Проверяем, что слайс для данной строки существует и имеет соответствующую длину
+		if y >= len(scene.Pixels) || scene.Pixels[y] == nil {
+			continue
+		}
+
+		width := min(scene.Width, len(scene.Pixels[y]))
+
+		for x := 0; x < width; x++ {
 			// Get traced pixel data
 			pixel := scene.Pixels[y][x]
 
@@ -252,6 +277,14 @@ func (r *ASCIIRenderer) sceneToASCII(scene *SceneData) []byte {
 	}
 
 	return result
+}
+
+// Вспомогательная функция для нахождения минимума из двух int
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // Close releases all resources

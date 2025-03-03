@@ -128,19 +128,21 @@ func (rt *Raytracer) SetScene(scene *ProceduralScene) {
 
 // TraceScene performs ray tracing for the entire scene
 func (rt *Raytracer) TraceScene() *SceneData {
-	if rt.scene == nil {
-		// If no scene, create an empty one
-		return &SceneData{
-			Pixels: make([][]TracedPixel, rt.height),
-			Width:  rt.width,
-			Height: rt.height,
-		}
+	// Создаем пустую сцену
+	sceneData := &SceneData{
+		Width:  rt.width,
+		Height: rt.height,
+		Pixels: make([][]TracedPixel, rt.height),
 	}
 
-	// Initialize pixel array
-	pixels := make([][]TracedPixel, rt.height)
+	// Инициализируем каждую строку пикселей
 	for y := 0; y < rt.height; y++ {
-		pixels[y] = make([]TracedPixel, rt.width)
+		sceneData.Pixels[y] = make([]TracedPixel, rt.width)
+	}
+
+	// Если сцена не задана, просто возвращаем пустую инициализированную сцену
+	if rt.scene == nil {
+		return sceneData
 	}
 
 	// Use goroutines for parallel ray tracing
@@ -194,7 +196,7 @@ func (rt *Raytracer) TraceScene() *SceneData {
 					hitInfo := rt.trace(ray)
 
 					// Record the result
-					pixels[y][x] = TracedPixel{
+					sceneData.Pixels[y][x] = TracedPixel{
 						X:         x,
 						Y:         y,
 						Intensity: calculateIntensity(hitInfo),
@@ -209,11 +211,7 @@ func (rt *Raytracer) TraceScene() *SceneData {
 	// Wait for all goroutines to finish
 	wg.Wait()
 
-	return &SceneData{
-		Pixels: pixels,
-		Width:  rt.width,
-		Height: rt.height,
-	}
+	return sceneData
 }
 
 // trace traces a single ray and returns hit information

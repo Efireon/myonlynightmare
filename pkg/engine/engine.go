@@ -150,12 +150,18 @@ func (e *Engine) update(deltaTime float64) {
 }
 
 // render renders the current frame
+// render renders the current frame
 func (e *Engine) render() {
 	// Clear the screen
 	// gl.Clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
 	// Generate scene using raytracer
 	scene := e.raytracer.TraceScene()
+
+	// Убедимся, что сцена была создана корректно
+	if scene == nil || len(scene.Pixels) == 0 {
+		e.logger.Warn("Empty scene returned from raytracer")
+	}
 
 	// Render ASCII representation
 	e.renderer.Render(scene)
