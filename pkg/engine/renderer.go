@@ -20,6 +20,9 @@ type Renderer interface {
 	// TogglePostProcessing enables or disables post-processing effects
 	TogglePostProcessing()
 
+	// SetPixelScale sets the pixelation scale (higher = more pixelated)
+	SetPixelScale(scale int)
+
 	// Close releases resources
 	Close()
 }

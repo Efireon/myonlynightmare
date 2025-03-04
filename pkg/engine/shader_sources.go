@@ -1,9 +1,9 @@
 package engine
 
-// Shader sources for the OpenGL renderer
+// Shader sources for the pixel-based renderer
 
-// Basic vertex shader for rendering ASCII characters
-const vertexShaderSource = `
+// Basic vertex shader for rendering sprites
+const pixelVertexShaderSource = `
 #version 410 core
 layout (location = 0) in vec3 aPos;
 layout (location = 1) in vec2 aTexCoord;
@@ -16,21 +16,33 @@ void main() {
 }
 `
 
-// Fragment shader for rendering ASCII characters
-const fragmentShaderSource = `
+// Fragment shader for rendering sprites
+const pixelFragmentShaderSource = `
 #version 410 core
 in vec2 TexCoord;
 out vec4 FragColor;
 
-uniform sampler2D asciiTexture;
-uniform vec3 textColor;
+uniform sampler2D spriteTexture;
+uniform vec3 objectColor;
+uniform float visibility;
 
 void main() {
     // Sample the texture
-    float alpha = texture(asciiTexture, TexCoord).r;
+    vec4 texColor = texture(spriteTexture, TexCoord);
     
-    // Apply text color
-    FragColor = vec4(textColor * alpha, alpha);
+    // Use texture color or object color
+    vec4 color;
+    if (texColor.a > 0.0) {
+        color = texColor;
+    } else {
+        color = vec4(objectColor, 1.0);
+    }
+    
+    // Apply visibility/fog
+    color.a *= visibility;
+    
+    // Output color
+    FragColor = color;
 }
 `
 
@@ -49,7 +61,7 @@ void main() {
 `
 
 // Fragment shader for post-processing effects
-const postProcessFragmentShader = `
+const postProcessFragmentShaderSource = `
 #version 410 core
 in vec2 TexCoord;
 out vec4 FragColor;
@@ -60,6 +72,7 @@ uniform float glitchAmount;
 uniform float vignetteAmount;
 uniform float noiseAmount;
 uniform vec2 resolution;
+uniform int pixelSize;
 
 // Pseudo-random noise function
 float rand(vec2 co) {
@@ -80,8 +93,12 @@ float noise(vec2 p) {
 }
 
 void main() {
+    // Pixelation effect - calculate pixel grid coordinates
+    vec2 pixelSize = vec2(float(pixelSize)) / resolution;
+    vec2 pixelCoord = floor(TexCoord / pixelSize) * pixelSize;
+    
     // Base texture coordinates
-    vec2 texCoord = TexCoord;
+    vec2 texCoord = pixelCoord;
     
     // Apply glitch effect
     if (glitchAmount > 0.0) {
@@ -112,7 +129,7 @@ void main() {
         }
     }
     
-    // Sample the screen texture
+    // Sample the pixelated screen texture
     vec4 color = texture(screenTexture, texCoord);
     
     // Apply vignette effect
@@ -140,6 +157,11 @@ void main() {
     // Apply subtle film grain
     float grain = rand(texCoord * time) * 0.03;
     color.rgb += grain - 0.015;
+    
+    // Retro color palette quantization
+    // Simulate limited color palette by rounding RGB values
+    int colorDepth = 32; // Number of color levels
+    color.rgb = floor(color.rgb * float(colorDepth)) / float(colorDepth);
     
     // Final output
     FragColor = color;

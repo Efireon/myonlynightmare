@@ -14,14 +14,11 @@ import (
 	"nightmare/pkg/config"
 )
 
-// In engine.go
-
 type Engine struct {
 	window      *glfw.Window
 	config      *config.Config
 	logger      *logger.Logger
-	raytracer   *Raytracer
-	renderer    Renderer // Using Renderer interface
+	renderer    *PixelRenderer
 	procedural  *ProceduralGenerator
 	audioEngine *AudioEngine
 	physics     *PhysicsSystem
@@ -58,7 +55,7 @@ func NewEngine(cfg *config.Config, log *logger.Logger) (*Engine, error) {
 	window, err := glfw.CreateWindow(
 		cfg.Graphics.Width,
 		cfg.Graphics.Height,
-		"Nightmare - ASCII Horror",
+		"Nightmare - Pixelated Horror",
 		nil,
 		nil,
 	)
@@ -88,8 +85,7 @@ func NewEngine(cfg *config.Config, log *logger.Logger) (*Engine, error) {
 		framesPerCheck: 30,
 	}
 
-	// Add resize
-
+	// Add resize callback
 	window.SetSizeCallback(glfw.SizeCallback(func(w *glfw.Window, width, height int) {
 		engine.resizeCallback(w, width, height)
 	}))
@@ -97,19 +93,12 @@ func NewEngine(cfg *config.Config, log *logger.Logger) (*Engine, error) {
 	// Create input handler
 	engine.input = NewInputHandler(window)
 
-	// Initialize components
-	raytracer, err := NewRaytracer(cfg.Raytracer)
+	// Initialize pixel renderer
+	pixelRenderer, err := NewPixelRenderer(cfg.Renderer)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize raytracer: %v", err)
+		return nil, fmt.Errorf("failed to initialize pixel renderer: %v", err)
 	}
-	engine.raytracer = raytracer
-
-	// Create OpenGL renderer
-	renderer, err := NewOpenGLRenderer(cfg.Renderer)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize OpenGL renderer: %v", err)
-	}
-	engine.renderer = renderer
+	engine.renderer = pixelRenderer
 
 	procedural, err := NewProceduralGenerator(cfg.Procedural)
 	if err != nil {
@@ -147,12 +136,6 @@ func (e *Engine) Run() {
 	// Set up physics
 	e.physics.SetScene(e.procedural.GetCurrentScene())
 
-	// Set up camera
-	e.logger.Info("Setting up camera")
-	cameraHeight := 1.7 // Eye height
-	e.raytracer.SetCameraPosition(Vector3{X: 0, Y: cameraHeight, Z: -5})
-	e.logger.Info("Camera setup completed")
-
 	// Initialize atmosphere
 	e.logger.Info("Generating atmosphere")
 	metadata := map[string]float64{
@@ -189,16 +172,6 @@ func (e *Engine) Run() {
 		// Update physics
 		e.physics.Update(deltaTime)
 
-		// Update camera from physics
-		playerPos := e.physics.GetPlayer().Position
-		viewDir := e.physics.GetPlayer().Direction
-		e.raytracer.SetCameraPosition(playerPos)
-
-		// Calculate yaw and pitch from direction vector
-		yaw := math.Atan2(viewDir.X, viewDir.Z)
-		pitch := math.Asin(math.Max(-0.99, math.Min(0.99, viewDir.Y)))
-		e.raytracer.RotateCamera(yaw, pitch)
-
 		// Update game state
 		e.update(deltaTime)
 
@@ -232,13 +205,8 @@ func Vector3Distance(a, b Vector3) float64 {
 
 // render renders the current frame
 func (e *Engine) render() {
-	// Generate scene using raytracer
-	scene := e.raytracer.TraceScene()
-
-	// Check for valid scene
-	if scene == nil || len(scene.Pixels) == 0 {
-		e.logger.Warn("Empty scene returned from raytracer")
-	}
+	// Create scene data for renderer
+	scene := e.createSceneData()
 
 	// Render scene
 	e.renderer.Render(scene)
@@ -261,6 +229,123 @@ func (e *Engine) render() {
 	}
 }
 
+// createSceneData prepares scene data for the renderer
+func (e *Engine) createSceneData() *SceneData {
+	if e.procedural == nil || e.procedural.GetCurrentScene() == nil {
+		return nil
+	}
+
+	procScene := e.procedural.GetCurrentScene()
+	playerPos := e.physics.GetPlayer().Position
+	viewDir := e.physics.GetPlayer().Direction
+
+	// Create scene data
+	scene := NewSceneData(e.config.Renderer.Width, e.config.Renderer.Height)
+	scene.PlayerPosition = playerPos
+	scene.ViewDirection = viewDir
+	scene.TimeOfDay = procScene.TimeOfDay
+
+	// Copy atmosphere data
+	for k, v := range procScene.Atmosphere {
+		scene.Atmosphere[k] = v
+	}
+
+	// Add special effects
+	if procScene.Weather != nil {
+		// Add fog from weather
+		if fogAmount, ok := procScene.Weather["fog"]; ok {
+			scene.SetSpecialEffect("fog", fogAmount)
+		}
+	}
+
+	// Add darkness based on time of day
+	timeOfDay := procScene.TimeOfDay
+	if timeOfDay < 0.25 || timeOfDay > 0.75 { // night or evening
+		var darkness float64
+		if timeOfDay < 0.25 { // night
+			darkness = 1.0 - (timeOfDay / 0.25 * 4.0)
+		} else { // evening
+			darkness = (timeOfDay - 0.75) / 0.25 * 4.0
+		}
+		scene.SetSpecialEffect("darkness", darkness)
+	}
+
+	// Calculate objects in view
+	e.populateObjectsInView(scene, procScene, playerPos, viewDir)
+
+	return scene
+}
+
+// populateObjectsInView calculates which objects are in the player's view
+func (e *Engine) populateObjectsInView(scene *SceneData, procScene *ProceduralScene, playerPos, viewDir Vector3) {
+	// Field of view in radians
+	fov := 60.0 * (math.Pi / 180.0)
+
+	// Dot product threshold for FOV
+	cosHalfFOV := math.Cos(fov / 2)
+
+	// Max view distance
+	maxDistance := 100.0
+
+	// Process all objects
+	for _, obj := range procScene.Objects {
+		// Calculate direction and distance to object
+		dirToObj := Vector3{
+			X: obj.Position.X - playerPos.X,
+			Y: obj.Position.Y - playerPos.Y,
+			Z: obj.Position.Z - playerPos.Z,
+		}
+		distance := math.Sqrt(dirToObj.X*dirToObj.X + dirToObj.Y*dirToObj.Y + dirToObj.Z*dirToObj.Z)
+
+		// Skip if too far
+		if distance > maxDistance {
+			continue
+		}
+
+		// Normalize direction
+		dirToObj.X /= distance
+		dirToObj.Y /= distance
+		dirToObj.Z /= distance
+
+		// Calculate dot product to check if in FOV
+		dotProduct := dirToObj.X*viewDir.X + dirToObj.Y*viewDir.Y + dirToObj.Z*viewDir.Z
+
+		// If object is in front of player and within FOV
+		if dotProduct > cosHalfFOV {
+			// Calculate size based on distance
+			size := obj.Scale.X / math.Max(1.0, distance/5.0)
+
+			// Calculate visibility based on distance, fog, and darkness
+			visibility := 1.0 - math.Min(1.0, distance/maxDistance)
+
+			// Modify visibility based on fog
+			if fogAmount, ok := scene.SpecialEffects["fog"]; ok {
+				fogFactor := math.Exp(-fogAmount * distance * 0.025)
+				visibility *= fogFactor
+			}
+
+			// Modify visibility based on darkness
+			if darkness, ok := scene.SpecialEffects["darkness"]; ok {
+				visibility *= 1.0 - darkness*0.5
+			}
+
+			// Create scene object
+			sceneObj := &SceneObject{
+				Type:       obj.Type,
+				ID:         obj.ID,
+				Distance:   distance,
+				Direction:  dirToObj,
+				Size:       size,
+				Metadata:   obj.Metadata,
+				Visibility: visibility,
+			}
+
+			// Add to objects in view
+			scene.ObjectsInView = append(scene.ObjectsInView, sceneObj)
+		}
+	}
+}
+
 // cleanup performs cleanup before exiting
 func (e *Engine) cleanup() {
 	e.logger.Info("Shutting down engine...")
@@ -268,8 +353,6 @@ func (e *Engine) cleanup() {
 	e.renderer.Close()
 	glfw.Terminate()
 }
-
-// Missing functions in engine.go
 
 // analyzeEnvironment analyzes the environment around the player
 func (e *Engine) analyzeEnvironment(playerPos Vector3) map[string]float64 {
@@ -418,7 +501,7 @@ func (e *Engine) processEnvironmentTriggers(playerPos Vector3, deltaTime float64
 	}
 }
 
-// Fixed processInput method to remove unused variables
+// processInput handles user input
 func (e *Engine) processInput(deltaTime float64) {
 	// Close game on ESC
 	if e.input.IsKeyPressed(glfw.KeyEscape) {
@@ -453,12 +536,72 @@ func (e *Engine) processInput(deltaTime float64) {
 		e.physics.RotateRight(deltaTime)
 	}
 	if e.input.IsKeyDown(glfw.KeyUp) {
-		// Look up - use raytracer directly
-		e.raytracer.RotateCamera(0, -rotateSpeed)
+		// Look up - adjust player's pitch
+		if player := e.physics.GetPlayer(); player != nil {
+			direction := player.Direction
+
+			// Calculate current pitch
+			pitch := math.Asin(math.Max(-0.99, math.Min(0.99, direction.Y)))
+
+			// Adjust pitch (look up)
+			newPitch := math.Max(-math.Pi/2.5, pitch-rotateSpeed)
+
+			// Recalculate direction vector
+			direction.Y = math.Sin(newPitch)
+			horizontalScale := math.Cos(newPitch)
+
+			// Get yaw angle (horizontal direction)
+			yaw := math.Atan2(direction.X, direction.Z)
+
+			// Update direction vector with new pitch
+			direction.X = horizontalScale * math.Sin(yaw)
+			direction.Z = horizontalScale * math.Cos(yaw)
+
+			// Normalize direction
+			length := math.Sqrt(direction.X*direction.X + direction.Y*direction.Y + direction.Z*direction.Z)
+			if length > 0 {
+				direction.X /= length
+				direction.Y /= length
+				direction.Z /= length
+			}
+
+			// Set new direction
+			player.Direction = direction
+		}
 	}
 	if e.input.IsKeyDown(glfw.KeyDown) {
-		// Look down - use raytracer directly
-		e.raytracer.RotateCamera(0, rotateSpeed)
+		// Look down - adjust player's pitch
+		if player := e.physics.GetPlayer(); player != nil {
+			direction := player.Direction
+
+			// Calculate current pitch
+			pitch := math.Asin(math.Max(-0.99, math.Min(0.99, direction.Y)))
+
+			// Adjust pitch (look down)
+			newPitch := math.Min(math.Pi/2.5, pitch+rotateSpeed)
+
+			// Recalculate direction vector
+			direction.Y = math.Sin(newPitch)
+			horizontalScale := math.Cos(newPitch)
+
+			// Get yaw angle (horizontal direction)
+			yaw := math.Atan2(direction.X, direction.Z)
+
+			// Update direction vector with new pitch
+			direction.X = horizontalScale * math.Sin(yaw)
+			direction.Z = horizontalScale * math.Cos(yaw)
+
+			// Normalize direction
+			length := math.Sqrt(direction.X*direction.X + direction.Y*direction.Y + direction.Z*direction.Z)
+			if length > 0 {
+				direction.X /= length
+				direction.Y /= length
+				direction.Z /= length
+			}
+
+			// Set new direction
+			player.Direction = direction
+		}
 	}
 
 	// Jump
@@ -480,36 +623,41 @@ func (e *Engine) processInput(deltaTime float64) {
 		e.logger.Info("Post-processing toggled")
 	}
 
-	// Audio volume controls
+	// Adjust pixel size (pixelation level)
 	if e.input.IsKeyPressed(glfw.KeyEqual) || e.input.IsKeyPressed(glfw.KeyKPAdd) {
-		e.audioEngine.IncreaseVolume(0.1)
-		e.logger.Info("Volume increased")
+		// Decrease pixel size (more detail)
+		current := e.renderer.pixelSize
+		if current > 1 {
+			e.renderer.SetPixelSize(current - 1)
+			e.logger.Info("Pixel size decreased to %d", current-1)
+		}
 	}
 	if e.input.IsKeyPressed(glfw.KeyMinus) || e.input.IsKeyPressed(glfw.KeyKPSubtract) {
-		e.audioEngine.DecreaseVolume(0.1)
-		e.logger.Info("Volume decreased")
+		// Increase pixel size (more pixelated)
+		current := e.renderer.pixelSize
+		if current < 16 {
+			e.renderer.SetPixelSize(current + 1)
+			e.logger.Info("Pixel size increased to %d", current+1)
+		}
 	}
+
+	// Audio volume controls
 	if e.input.IsKeyPressed(glfw.KeyM) {
 		e.audioEngine.ToggleMute()
 		e.logger.Info("Audio mute toggled")
 	}
 }
 
-// Fixed update method to handle scene.SpecialEffects access
+// update handles game logic updates
 func (e *Engine) update(deltaTime float64) {
 	// Update procedural generation
 	e.procedural.Update(deltaTime)
-
-	// Pass current scene to raytracer
-	if e.procedural.currentScene != nil {
-		e.raytracer.SetScene(e.procedural.currentScene)
-	}
 
 	// Update audio
 	e.audioEngine.Update(deltaTime)
 
 	// Get player position
-	playerPos := e.raytracer.GetCameraPosition()
+	playerPos := e.physics.GetPlayer().Position
 
 	// Analyze environment around player
 	environmentMood := e.analyzeEnvironment(playerPos)
@@ -525,14 +673,9 @@ func (e *Engine) update(deltaTime float64) {
 	// Update renderer effects based on scene conditions
 	scene := e.procedural.GetCurrentScene()
 	if scene != nil {
-		// Create a map for special effects derived from atmospherics
-		specialEffects := make(map[string]float64)
-
-		// Add fog from weather
+		// Get renderer effects from scene conditions
 		if scene.Weather != nil {
 			if fogAmount, ok := scene.Weather["fog"]; ok {
-				specialEffects["fog"] = fogAmount
-
 				// Lower noise in foggy scenes for better visibility
 				e.renderer.SetNoiseAmount(float32(0.02 * (1.0 - fogAmount*0.5)))
 				// Increase vignette in foggy scenes
@@ -550,19 +693,24 @@ func (e *Engine) update(deltaTime float64) {
 				darkness = (timeOfDay - 0.75) / 0.25 * 4.0
 			}
 
-			specialEffects["darkness"] = darkness
-
 			// Increase vignette in dark scenes
 			if darkness > 0.5 {
 				e.renderer.SetVignetteAmount(float32(0.4 + (darkness-0.5)*0.3))
 			}
 		}
-
-		// Add fear based on atmosphere
-		if scene.Atmosphere != nil {
-			if fear, ok := scene.Atmosphere["atmosphere.fear"]; ok {
-				specialEffects["fear"] = fear
-			}
-		}
 	}
+}
+
+// resizeCallback handles window resize events
+func (e *Engine) resizeCallback(_ *glfw.Window, width int, height int) {
+	e.logger.Info("Window resized to %dx%d", width, height)
+	e.windowWidth = width
+	e.windowHeight = height
+
+	// Update config
+	e.config.Graphics.Width = width
+	e.config.Graphics.Height = height
+
+	// Update renderer resolution
+	e.renderer.UpdateResolution(width, height)
 }
