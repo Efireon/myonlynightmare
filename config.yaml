@@ -2,9 +2,9 @@
 
 # Graphics settings
 graphics:
-  width: 1280           # Window width
-  height: 720           # Window height
-  fullscreen: false     # Fullscreen mode
+  width: 1920           # Window width
+  height: 1080           # Window height
+  fullscreen: true     # Fullscreen mode
   vsync: true           # Vertical sync
   framerate: 60         # Frame rate limit
   display_mode: opengl  # Rendering mode (opengl, ascii)
@@ -22,8 +22,8 @@ audio:
 
 # Raytracer settings
 raytracer:
-  width: 160            # Raytracer resolution width
-  height: 90            # Raytracer resolution height
+  width: 80            # Raytracer resolution width
+  height: 40            # Raytracer resolution height
   num_threads: 4        # Number of threads for raytracing
   max_bounces: 1        # Max ray bounces
   shadows_enabled: true # Enable shadows
@@ -31,8 +31,8 @@ raytracer:
 
 # Renderer settings
 renderer:
-  width: 160            # ASCII grid width
-  height: 90            # ASCII grid height
+  width: 80            # ASCII grid width
+  height: 40            # ASCII grid height
   charset: " .:-=+*#%@" # ASCII character set from dark to light
   color_mode: color     # Color mode (mono, grayscale, color)
   glitch_amount: 0.0    # Default glitch amount

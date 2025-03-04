@@ -14,7 +14,7 @@ import (
 	"nightmare/pkg/config"
 
 	"github.com/go-gl/gl/v4.1-core/gl"
-	"github.com/go-gl/glfw/v3.0/glfw"
+	"github.com/go-gl/glfw/v3.3/glfw"
 )
 
 // OpenGLRenderer handles rendering the scene using OpenGL
@@ -528,8 +528,6 @@ func (r *OpenGLRenderer) Close() {
 	gl.DeleteProgram(r.effectsShader)
 }
 
-// Fix for OpenGLRenderer viewport issue
-
 // Update the OpenGLRenderer.Render method to properly set the viewport
 func (r *OpenGLRenderer) Render(scene *SceneData) {
 	r.mutex.Lock()
@@ -589,9 +587,8 @@ func (r *OpenGLRenderer) Render(scene *SceneData) {
 
 // Add this helper function to get current window dimensions
 func (r *OpenGLRenderer) getWindowDimensions() (int, int) {
-	a, _ := glfw.GetCurrentContext()
-	if a != nil {
-		if win, _ := glfw.GetCurrentContext(); win != nil {
+	if glfw.GetCurrentContext() != nil {
+		if win := glfw.GetCurrentContext(); win != nil {
 			width, height := win.GetSize()
 			return width, height
 		}
@@ -744,7 +741,7 @@ func (r *OpenGLRenderer) renderPostProcess() {
 	gl.BindVertexArray(0)
 }
 
-// Update this function to use the correct GLFW version
+// Also update the Engine.resizeCallback method to notify the renderer
 func (e *Engine) resizeCallback(_ *glfw.Window, width int, height int) {
 	e.logger.Info("Window resized to %dx%d", width, height)
 	e.windowWidth = width
