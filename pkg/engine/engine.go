@@ -100,7 +100,7 @@ func NewEngine(cfg *config.Config, log *logger.Logger) (*Engine, error) {
 	audioEngine, err := NewAudioEngine(cfg.Audio)
 	if err != nil {
 		log.Warn("Failed to initialize audio engine: %v. Running without audio.", err)
-		// Создаем заглушку для аудио (null object pattern)
+		// Create a dummy audio engine
 		audioEngine = &AudioEngine{
 			isRunning: false,
 		}
@@ -140,16 +140,26 @@ func (e *Engine) resizeCallback(_ *glfw.Window, width int, height int) {
 
 // Run starts the main game loop
 func (e *Engine) Run() {
+	// In engine.go -> Run() method
+	e.logger.Info("Starting engine.Run()")
 	e.isRunning = true
 	e.lastUpdate = time.Now()
 
+	// Log before procedural generation
+	e.logger.Info("Starting world generation")
 	// Setup initial world
 	e.procedural.GenerateInitialWorld()
+	e.logger.Info("World generation completed")
 
+	// Log camera setup
+	e.logger.Info("Setting up camera")
 	// Установим начальное положение камеры
 	cameraHeight := 1.7 // высота камеры в условных единицах (рост человека)
 	e.raytracer.SetCameraPosition(Vector3{X: 0, Y: cameraHeight, Z: -5})
+	e.logger.Info("Camera setup completed")
 
+	// Log atmosphere generation
+	e.logger.Info("Generating atmosphere")
 	// Генерируем начальную атмосферу
 	metadata := map[string]float64{
 		"atmosphere.fear":    0.2,
@@ -158,23 +168,41 @@ func (e *Engine) Run() {
 		"conditions.fog":     0.3,
 	}
 	e.audioEngine.GenerateAtmosphere(metadata)
+	e.logger.Info("Atmosphere generation completed")
 
-	// Main game loop
+	frameCount := 0
+	lastFpsTime := time.Now()
+
+	// Log start of main loop
+	e.logger.Info("Entering main game loop")
 	for e.isRunning && !e.window.ShouldClose() {
+		frameCount++
 		currentTime := time.Now()
+
+		// Print FPS every second
+		if currentTime.Sub(lastFpsTime) >= time.Second {
+			e.logger.Info("FPS: %d", frameCount)
+			frameCount = 0
+			lastFpsTime = currentTime
+		}
+
 		deltaTime := currentTime.Sub(e.lastUpdate).Seconds()
 		e.lastUpdate = currentTime
 
+		e.logger.Debug("Processing input")
 		// Обработка ввода
 		e.input.Update()
 		e.processInput(deltaTime)
 
+		e.logger.Debug("Updating game state")
 		// Update game state
 		e.update(deltaTime)
 
+		e.logger.Debug("Rendering frame")
 		// Render frame
 		e.render()
 
+		e.logger.Debug("Swapping buffers")
 		// Swap buffers and poll events
 		e.window.SwapBuffers()
 		glfw.PollEvents()
@@ -335,31 +363,51 @@ func (e *Engine) processInput(deltaTime float64) {
 }
 
 // update updates the game state
+// In engine.go
 func (e *Engine) update(deltaTime float64) {
+	e.logger.Debug("Starting update method")
+
 	// Update procedural generation
+	e.logger.Debug("Updating procedural generation")
 	e.procedural.Update(deltaTime)
+	e.logger.Debug("Procedural generation updated")
 
 	// Передаем текущую сцену в рейтрейсер
+	e.logger.Debug("Passing scene to raytracer")
 	if e.procedural.currentScene != nil {
 		e.raytracer.SetScene(e.procedural.currentScene)
 	}
+	e.logger.Debug("Scene passed to raytracer")
 
 	// Update audio
+	e.logger.Debug("Updating audio")
 	e.audioEngine.Update(deltaTime)
+	e.logger.Debug("Audio updated")
 
 	// Получаем текущее положение игрока
+	e.logger.Debug("Getting player position")
 	playerPos := e.raytracer.GetCameraPosition()
+	e.logger.Debug("Got player position")
 
 	// Анализируем окружение вокруг игрока
+	e.logger.Debug("Analyzing environment")
 	environmentMood := e.analyzeEnvironment(playerPos)
+	e.logger.Debug("Environment analyzed")
 
 	// Обновляем атмосферу на основе окружения
+	e.logger.Debug("Checking if atmosphere update needed")
 	if deltaTime > 0 && int(e.lastUpdate.Second())%10 == 0 { // каждые 10 секунд
+		e.logger.Debug("Updating atmosphere")
 		e.audioEngine.UpdateAtmosphere(environmentMood, 5.0) // плавный переход за 5 секунд
+		e.logger.Debug("Atmosphere updated")
 	}
 
 	// Обработка специальных события по триггерам окружения
+	e.logger.Debug("Processing environment triggers")
 	e.processEnvironmentTriggers(playerPos, deltaTime)
+	e.logger.Debug("Environment triggers processed")
+
+	e.logger.Debug("Update method completed")
 }
 
 // analyzeEnvironment анализирует окружение вокруг игрока для создания соответствующей атмосферы

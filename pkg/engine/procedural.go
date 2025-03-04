@@ -200,11 +200,15 @@ func (pg *ProceduralGenerator) GenerateInitialWorld() {
 	pg.mutex.Lock()
 	defer pg.mutex.Unlock()
 
+	fmt.Println("Starting world generation...") // This will print to console even if logger isn't working
+
 	// Create a new scene with seed from config or random
 	seed := pg.config.Seed
 	if seed == 0 {
 		seed = time.Now().UnixNano()
 	}
+
+	fmt.Println("Creating scene with seed:", seed)
 
 	pg.currentScene = &ProceduralScene{
 		Objects:     make([]*ProceduralObject, 0),
@@ -215,6 +219,8 @@ func (pg *ProceduralGenerator) GenerateInitialWorld() {
 		Atmosphere:  make(map[string]float64),
 		LevelOfFear: 0.5,
 	}
+
+	fmt.Println("Scene created, initializing atmosphere...")
 
 	// Initialize atmosphere from biome
 	biomeParams := pg.biomes[pg.currentScene.BiomeType]
@@ -228,11 +234,17 @@ func (pg *ProceduralGenerator) GenerateInitialWorld() {
 		pg.currentScene.Weather[k] = v
 	}
 
+	fmt.Println("Generating terrain...")
 	// Generate terrain
 	pg.currentScene.Terrain = pg.generateTerrain(seed, pg.currentScene.BiomeType)
+	fmt.Println("Terrain generation completed")
 
+	fmt.Println("Populating scene with objects...")
 	// Generate initial objects based on the terrain
 	pg.populateScene()
+	fmt.Println("Scene population completed")
+
+	fmt.Println("World generation completed")
 }
 
 // Update updates the procedural generation based on time
