@@ -1,18 +1,5 @@
 package engine
 
-// SceneData содержит результат трассировки сцены и дополнительные метаданные
-type SceneData struct {
-	Pixels         [][]TracedPixel    // Трассированные пиксели
-	Width          int                // Ширина сцены
-	Height         int                // Высота сцены
-	SpecialEffects map[string]float64 // Карта специальных эффектов и их интенсивности
-	Atmosphere     map[string]float64 // Атмосферные параметры сцены
-	TimeOfDay      float64            // Время суток (0.0-1.0, 0 = полночь, 0.5 = полдень)
-	ObjectsInView  []*SceneObject     // Объекты в поле зрения
-	PlayerPosition Vector3            // Текущая позиция игрока
-	ViewDirection  Vector3            // Направление взгляда
-}
-
 // SceneObject представляет собой объект в поле зрения
 type SceneObject struct {
 	Type       string             // Тип объекта
@@ -35,42 +22,9 @@ type TracedPixel struct {
 	Normal     Vector3 // Поверхностная нормаль в точке пересечения
 }
 
-// NewSceneData создает новый пустой экземпляр SceneData
-func NewSceneData(width, height int) *SceneData {
-	scene := &SceneData{
-		Width:          width,
-		Height:         height,
-		Pixels:         make([][]TracedPixel, height),
-		SpecialEffects: make(map[string]float64),
-		Atmosphere:     make(map[string]float64),
-		TimeOfDay:      0.5,
-		ObjectsInView:  make([]*SceneObject, 0),
-	}
-
-	// Инициализируем массив пикселей
-	for y := 0; y < height; y++ {
-		scene.Pixels[y] = make([]TracedPixel, width)
-	}
-
-	return scene
-}
-
 // AddObjectInView добавляет объект в список видимых объектов
 func (sd *SceneData) AddObjectInView(obj *SceneObject) {
 	sd.ObjectsInView = append(sd.ObjectsInView, obj)
-}
-
-// SetSpecialEffect устанавливает значение специального эффекта
-func (sd *SceneData) SetSpecialEffect(effect string, value float64) {
-	sd.SpecialEffects[effect] = value
-}
-
-// GetSpecialEffect возвращает значение специального эффекта
-func (sd *SceneData) GetSpecialEffect(effect string) float64 {
-	if value, ok := sd.SpecialEffects[effect]; ok {
-		return value
-	}
-	return 0.0
 }
 
 // SetAtmosphereValue устанавливает значение атмосферного параметра
@@ -123,4 +77,49 @@ func (sd *SceneData) GetObjectByID(id int) *SceneObject {
 	}
 
 	return nil
+}
+
+type SceneData struct {
+	Pixels         [][]TracedPixel    // Traced pixels
+	Width          int                // Scene width
+	Height         int                // Scene height
+	SpecialEffects map[string]float64 // Special effects and their intensities
+	Atmosphere     map[string]float64 // Atmospheric parameters
+	TimeOfDay      float64            // Time of day (0.0-1.0, 0 = midnight, 0.5 = noon)
+	ObjectsInView  []*SceneObject     // Objects in view
+	PlayerPosition Vector3            // Current player position
+	ViewDirection  Vector3            // View direction
+}
+
+// Update NewSceneData to initialize SpecialEffects
+func NewSceneData(width, height int) *SceneData {
+	scene := &SceneData{
+		Width:          width,
+		Height:         height,
+		Pixels:         make([][]TracedPixel, height),
+		SpecialEffects: make(map[string]float64),
+		Atmosphere:     make(map[string]float64),
+		TimeOfDay:      0.5,
+		ObjectsInView:  make([]*SceneObject, 0),
+	}
+
+	// Initialize pixel array
+	for y := 0; y < height; y++ {
+		scene.Pixels[y] = make([]TracedPixel, width)
+	}
+
+	return scene
+}
+
+// Helper to set a special effect
+func (sd *SceneData) SetSpecialEffect(effect string, value float64) {
+	sd.SpecialEffects[effect] = value
+}
+
+// Helper to get a special effect with default value
+func (sd *SceneData) GetSpecialEffect(effect string) float64 {
+	if value, ok := sd.SpecialEffects[effect]; ok {
+		return value
+	}
+	return 0.0
 }

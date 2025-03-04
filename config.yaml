@@ -1,79 +1,79 @@
-# Конфигурация для Nightmare - ASCII Horror Game
+# Configuration for Nightmare - ASCII Horror Game
 
-# Настройки графики
+# Graphics settings
 graphics:
-  width: 1920           # Ширина окна
-  height: 1080           # Высота окна
-  fullscreen: false     # Полноэкранный режим
-  vsync: true           # Вертикальная синхронизация
-  framerate: 60         # Ограничение частоты кадров
-  display_mode: ascii   # Режим отображения (ascii, opengl, hybrid)
+  width: 1280           # Window width
+  height: 720           # Window height
+  fullscreen: false     # Fullscreen mode
+  vsync: true           # Vertical sync
+  framerate: 60         # Frame rate limit
+  display_mode: opengl  # Rendering mode (opengl, ascii)
 
-# Настройки аудио
+# Audio settings
 audio:
-  enabled: true         # Включение звука
-  volume: 0.8           # Громкость (0.0-1.0)
-  enable_mic: true      # Включение микрофона
-  mic_sensitivity: 0.7  # Чувствительность микрофона
-  effect_volume: 0.7    # Громкость эффектов
-  ambient_volume: 0.5   # Громкость фоновых звуков
-  reverb_amount: 0.6    # Количество реверберации
-  bass_boost: 0.3       # Усиление низких частот
+  enabled: true         # Enable audio
+  volume: 0.8           # Volume (0.0-1.0)
+  enable_mic: true      # Enable microphone
+  mic_sensitivity: 0.7  # Microphone sensitivity
+  effect_volume: 0.7    # Effect volume
+  ambient_volume: 0.5   # Ambient volume
+  reverb_amount: 0.6    # Reverb amount
+  bass_boost: 0.3       # Bass boost
 
-# Настройки рейтрейсинга
+# Raytracer settings
 raytracer:
-  width: 80            # Ширина буфера рейтрейсинга
-  height: 60            # Высота буфера рейтрейсинга
-  num_threads: 2        # Количество потоков для рейтрейсинга
-  max_bounces: 1        # Максимальное количество отражений
-  shadows_enabled: true # Включение теней
-  fog_enabled: true     # Включение тумана
+  width: 160            # Raytracer resolution width
+  height: 90            # Raytracer resolution height
+  num_threads: 4        # Number of threads for raytracing
+  max_bounces: 1        # Max ray bounces
+  shadows_enabled: true # Enable shadows
+  fog_enabled: true     # Enable fog
 
-# Настройки рендерера ASCII
+# Renderer settings
 renderer:
-  width: 80            # Ширина сетки символов
-  height: 60            # Высота сетки символов
-  charset: " .:-=+*#%@" # Набор символов от темного к светлому
-  color_mode: grayscale # Режим цвета (mono, grayscale, color)
-  glitch_amount: 0.0    # Количество эффекта глюка
+  width: 160            # ASCII grid width
+  height: 90            # ASCII grid height
+  charset: " .:-=+*#%@" # ASCII character set from dark to light
+  color_mode: color     # Color mode (mono, grayscale, color)
+  glitch_amount: 0.0    # Default glitch amount
 
-# Настройки процедурной генерации
+# Procedural generation settings
 procedural:
-  terrain_size: 256     # Размер ландшафта
-  tree_density: 6.0     # Плотность деревьев
-  rock_density: 4.0     # Плотность камней
-  strange_density: 0.5  # Плотность странных объектов
-  detail_level: 4       # Уровень детализации
-  seed: 0               # Сид (0 = случайный)
-  biome: dark_forest    # Тип биома
+  terrain_size: 256     # Terrain size
+  tree_density: 6.0     # Tree density
+  rock_density: 4.0     # Rock density
+  strange_density: 0.5  # Strange object density
+  detail_level: 4       # Detail level
+  seed: 0               # Seed (0 = random)
+  biome: dark_forest    # Biome type
 
-# Настройки ИИ
+# AI settings
 ai:
-  enabled: true         # Включение ИИ
-  difficulty: 0.5       # Сложность (0.0-1.0)
-  adaptation_rate: 0.3  # Скорость адаптации
-  mic_enabled: true     # Использование микрофона для ИИ
-  behavior_analysis: true # Анализ поведения игрока
-  fear_threshold: 0.7   # Порог уровня страха
+  enabled: true         # Enable AI
+  difficulty: 0.5       # Difficulty (0.0-1.0)
+  adaptation_rate: 0.3  # Adaptation rate
+  mic_enabled: true     # Enable microphone for AI
+  behavior_analysis: true # Analyze player behavior
+  fear_threshold: 0.7   # Fear threshold
 
-# Настройки модификаций
+# Mod settings
 mods:
-  enabled: true         # Включение модификаций
-  mods_folder: mods     # Папка с модификациями
-  enabled_mods: []      # Список включенных модификаций
+  enabled: true         # Enable mods
+  mods_folder: mods     # Mods folder
+  enabled_mods: []      # Enabled mods list
 
-# Настройки игрока
+# Player settings
 player:
-  move_speed: 2.0       # Скорость движения
-  turn_speed: 2.0       # Скорость поворота
-  collision_radius: 0.5 # Радиус коллизии
-  height: 1.7           # Высота игрока
-  camera_height: 1.6    # Высота камеры от земли
-  fov: 60               # Поле зрения (в градусах)
+  move_speed: 2.0       # Movement speed
+  turn_speed: 2.0       # Turn speed
+  collision_radius: 0.5 # Collision radius
+  height: 1.7           # Player height
+  camera_height: 1.6    # Camera height
+  fov: 75               # Field of view (degrees)
 
-# Настройки атмосферы
+# Atmosphere settings
 atmosphere:
-  fear_base: 0.4        # Базовый уровень страха
-  darkness_intensity: 0.7 # Интенсивность темноты ночью
-  fog_density: 0.5      # Плотность тумана
-  day_cycle_minutes: 15 # Длительность цикла день/ночь (в минутах)
+  fear_base: 0.4        # Base fear level
+  darkness_intensity: 0.7 # Darkness intensity at night
+  fog_density: 0.5      # Fog density
+  day_cycle_minutes: 15 # Day/night cycle length (minutes)
