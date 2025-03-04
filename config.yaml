@@ -1,45 +1,79 @@
+# Конфигурация для Nightmare - ASCII Horror Game
+
+# Настройки графики
 graphics:
-  width: 800
-  height: 600
-  fullscreen: false
-  vsync: true
-  framerate: 60
-  display_mode: ascii
+  width: 1024           # Ширина окна
+  height: 768           # Высота окна
+  fullscreen: false     # Полноэкранный режим
+  vsync: true           # Вертикальная синхронизация
+  framerate: 60         # Ограничение частоты кадров
+  display_mode: ascii   # Режим отображения (ascii, opengl, hybrid)
 
+# Настройки аудио
 audio:
-  enabled: true
-  volume: 0.8
-  enable_mic: true
-  mic_sensitivity: 0.7
+  enabled: true         # Включение звука
+  volume: 0.8           # Громкость (0.0-1.0)
+  enable_mic: true      # Включение микрофона
+  mic_sensitivity: 0.7  # Чувствительность микрофона
+  effect_volume: 0.7    # Громкость эффектов
+  ambient_volume: 0.5   # Громкость фоновых звуков
+  reverb_amount: 0.6    # Количество реверберации
+  bass_boost: 0.3       # Усиление низких частот
 
+# Настройки рейтрейсинга
 raytracer:
-  width: 120
-  height: 60
-  num_threads: 4
-  max_bounces: 1
-  shadows_enabled: true
+  width: 160            # Ширина буфера рейтрейсинга
+  height: 90            # Высота буфера рейтрейсинга
+  num_threads: 4        # Количество потоков для рейтрейсинга
+  max_bounces: 1        # Максимальное количество отражений
+  shadows_enabled: true # Включение теней
+  fog_enabled: true     # Включение тумана
 
+# Настройки рендерера ASCII
 renderer:
-  width: 120
-  height: 60
-  charset: " .:-=+*#%@"
-  color_mode: grayscale
+  width: 160            # Ширина сетки символов
+  height: 90            # Высота сетки символов
+  charset: " .:-=+*#%@" # Набор символов от темного к светлому
+  color_mode: grayscale # Режим цвета (mono, grayscale, color)
+  glitch_amount: 0.0    # Количество эффекта глюка
 
+# Настройки процедурной генерации
 procedural:
-  terrain_size: 128
-  tree_density: 5.0
-  rock_density: 3.0
-  detail_level: 3
-  seed: 0  # 0 means random seed
+  terrain_size: 256     # Размер ландшафта
+  tree_density: 6.0     # Плотность деревьев
+  rock_density: 4.0     # Плотность камней
+  strange_density: 0.5  # Плотность странных объектов
+  detail_level: 4       # Уровень детализации
+  seed: 0               # Сид (0 = случайный)
+  biome: dark_forest    # Тип биома
 
+# Настройки ИИ
 ai:
-  enabled: true
-  difficulty: 0.5
-  adaptation_rate: 0.2
-  mic_enabled: true
-  behavior_analysis: true
+  enabled: true         # Включение ИИ
+  difficulty: 0.5       # Сложность (0.0-1.0)
+  adaptation_rate: 0.3  # Скорость адаптации
+  mic_enabled: true     # Использование микрофона для ИИ
+  behavior_analysis: true # Анализ поведения игрока
+  fear_threshold: 0.7   # Порог уровня страха
 
+# Настройки модификаций
 mods:
-  enabled: true
-  mods_folder: mods
-  enabled_mods: []
+  enabled: true         # Включение модификаций
+  mods_folder: mods     # Папка с модификациями
+  enabled_mods: []      # Список включенных модификаций
+
+# Настройки игрока
+player:
+  move_speed: 2.0       # Скорость движения
+  turn_speed: 2.0       # Скорость поворота
+  collision_radius: 0.5 # Радиус коллизии
+  height: 1.7           # Высота игрока
+  camera_height: 1.6    # Высота камеры от земли
+  fov: 60               # Поле зрения (в градусах)
+
+# Настройки атмосферы
+atmosphere:
+  fear_base: 0.4        # Базовый уровень страха
+  darkness_intensity: 0.7 # Интенсивность темноты ночью
+  fog_density: 0.5      # Плотность тумана
+  day_cycle_minutes: 15 # Длительность цикла день/ночь (в минутах)

@@ -44,9 +44,23 @@ func (v Vector3) Dot(other Vector3) float64 {
 	return v.X*other.X + v.Y*other.Y + v.Z*other.Z
 }
 
+// Cross calculates the cross product of two vectors
+func (v Vector3) Cross(other Vector3) Vector3 {
+	return Vector3{
+		X: v.Y*other.Z - v.Z*other.Y,
+		Y: v.Z*other.X - v.X*other.Z,
+		Z: v.X*other.Y - v.Y*other.X,
+	}
+}
+
+// Length returns the length of the vector
+func (v Vector3) Length() float64 {
+	return math.Sqrt(v.X*v.X + v.Y*v.Y + v.Z*v.Z)
+}
+
 // Normalize returns a normalized (unit) vector
 func (v Vector3) Normalize() Vector3 {
-	len := math.Sqrt(v.X*v.X + v.Y*v.Y + v.Z*v.Z)
+	len := v.Length()
 	if len == 0 {
 		return v
 	}
@@ -69,26 +83,12 @@ type HitInfo struct {
 	Position   Vector3
 	Normal     Vector3
 	ObjectID   int
+	ObjectType string
 	MaterialID int
-	Density    float64 // Used for ASCII intensity
+	Color      Vector3
+	Intensity  float64 // Used for ASCII intensity
 }
 
-// TracedPixel represents the result of a ray trace
-type TracedPixel struct {
-	X, Y      int
-	Intensity float64 // 0.0-1.0 intensity for ASCII rendering
-	ObjectID  int     // ID of the hit object
-	Depth     float64 // Depth from camera
-}
-
-// SceneData contains the full result of tracing the scene
-type SceneData struct {
-	Pixels [][]TracedPixel
-	Width  int
-	Height int
-}
-
-// Raytracer handles ray tracing operations
 // Raytracer handles ray tracing operations
 type Raytracer struct {
 	config config.RaytracerConfig
@@ -98,51 +98,16 @@ type Raytracer struct {
 		Up       Vector3
 		Right    Vector3
 		FOV      float64
-		Yaw      float64 // Горизонтальный угол поворота в радианах
-		Pitch    float64 // Вертикальный угол поворота в радианах
+		// Добавляем поддержку ограничения поворота камеры вверх/вниз
+		Pitch float64 // вертикальный угол (в радианах)
+		Yaw   float64 // горизонтальный угол (в радианах)
 	}
 	scene  *ProceduralScene
 	width  int
 	height int
+	mutex  sync.Mutex
 }
 
-// UpdateCamera обновляет положение и ориентацию камеры
-func (rt *Raytracer) UpdateCamera(positionDelta Vector3, yawDelta, pitchDelta float64) {
-	// Обновляем углы поворота
-	rt.camera.Yaw += yawDelta
-	rt.camera.Pitch += pitchDelta
-
-	// Ограничиваем угол наклона (pitch) чтобы избежать переворота камеры
-	if rt.camera.Pitch > 1.5 {
-		rt.camera.Pitch = 1.5
-	}
-	if rt.camera.Pitch < -1.5 {
-		rt.camera.Pitch = -1.5
-	}
-
-	// Пересчитываем векторы направления камеры
-	rt.camera.Forward = Vector3{
-		X: math.Cos(rt.camera.Yaw) * math.Cos(rt.camera.Pitch),
-		Y: math.Sin(rt.camera.Pitch),
-		Z: math.Sin(rt.camera.Yaw) * math.Cos(rt.camera.Pitch),
-	}.Normalize()
-
-	// Пересчитываем правый вектор, используя мировой "вверх"
-	worldUp := Vector3{X: 0, Y: 1, Z: 0}
-	rt.camera.Right = worldUp.Cross(rt.camera.Forward).Normalize()
-
-	// Пересчитываем верхний вектор, используя правый и вперед
-	rt.camera.Up = rt.camera.Forward.Cross(rt.camera.Right).Normalize()
-
-	// Обновляем позицию камеры
-	// Для перемещения мы используем направление камеры, а не мировые оси
-	rt.camera.Position = rt.camera.Position.Add(
-		rt.camera.Forward.Mul(positionDelta.Z).Add(
-			rt.camera.Right.Mul(positionDelta.X)).Add(
-			worldUp.Mul(positionDelta.Y)))
-}
-
-// NewRaytracer creates a new raytracer with the given configuration
 // NewRaytracer creates a new raytracer with the given configuration
 func NewRaytracer(config config.RaytracerConfig) (*Raytracer, error) {
 	rt := &Raytracer{
@@ -151,45 +116,112 @@ func NewRaytracer(config config.RaytracerConfig) (*Raytracer, error) {
 		height: config.Height,
 	}
 
-	// Устанавливаем начальные углы для камеры
-	rt.camera.Yaw = -math.Pi / 2 // Направление -Z (смотрим вперед)
-	rt.camera.Pitch = -0.3       // Немного вниз
-
-	// Задаем начальную позицию камеры
-	rt.camera.Position = Vector3{X: 0, Y: 10, Z: -15}
-
-	// Вычисляем направление "вперед" на основе углов
-	rt.camera.Forward = Vector3{
-		X: math.Cos(rt.camera.Yaw) * math.Cos(rt.camera.Pitch),
-		Y: math.Sin(rt.camera.Pitch),
-		Z: math.Sin(rt.camera.Yaw) * math.Cos(rt.camera.Pitch),
-	}.Normalize()
-
-	// Вычисляем правый вектор, используя мировой "вверх"
-	worldUp := Vector3{X: 0, Y: 1, Z: 0}
-	rt.camera.Right = worldUp.Cross(rt.camera.Forward).Normalize()
-
-	// Вычисляем верхний вектор камеры
-	rt.camera.Up = rt.camera.Forward.Cross(rt.camera.Right).Normalize()
-
-	// Угол поля зрения
-	rt.camera.FOV = 60.0 * (math.Pi / 180.0) // 60 градусов в радианах
+	// Setup default camera
+	rt.camera.Position = Vector3{X: 0, Y: 1.7, Z: -5} // высота глаз человека ~1.7м
+	rt.camera.Forward = Vector3{X: 0, Y: 0, Z: 1}.Normalize()
+	rt.camera.Up = Vector3{X: 0, Y: 1, Z: 0}.Normalize()
+	rt.camera.Right = Vector3{X: 1, Y: 0, Z: 0}.Normalize()
+	rt.camera.FOV = 60.0 * (math.Pi / 180.0) // Convert to radians
+	rt.camera.Pitch = 0.0                    // смотрим прямо
+	rt.camera.Yaw = 0.0
 
 	return rt, nil
 }
 
+// UpdateResolution updates the resolution of the raytracer
+func (rt *Raytracer) UpdateResolution(width, height int) {
+	rt.mutex.Lock()
+	defer rt.mutex.Unlock()
+
+	rt.width = width
+	rt.height = height
+	rt.config.Width = width
+	rt.config.Height = height
+}
+
 // SetScene sets the current scene to trace
 func (rt *Raytracer) SetScene(scene *ProceduralScene) {
+	rt.mutex.Lock()
+	defer rt.mutex.Unlock()
+
 	rt.scene = scene
+}
+
+// SetCameraPosition sets the camera position
+func (rt *Raytracer) SetCameraPosition(position Vector3) {
+	rt.mutex.Lock()
+	defer rt.mutex.Unlock()
+
+	rt.camera.Position = position
+}
+
+// GetCameraPosition returns the current camera position
+func (rt *Raytracer) GetCameraPosition() Vector3 {
+	rt.mutex.Lock()
+	defer rt.mutex.Unlock()
+
+	return rt.camera.Position
+}
+
+// GetCameraDirection returns the current forward direction of the camera
+func (rt *Raytracer) GetCameraDirection() Vector3 {
+	rt.mutex.Lock()
+	defer rt.mutex.Unlock()
+
+	return rt.camera.Forward
+}
+
+// GetCameraRight returns the current right vector of the camera
+func (rt *Raytracer) GetCameraRight() Vector3 {
+	rt.mutex.Lock()
+	defer rt.mutex.Unlock()
+
+	return rt.camera.Right
+}
+
+// RotateCamera rotates the camera by the given angles (in radians)
+func (rt *Raytracer) RotateCamera(yawDelta, pitchDelta float64) {
+	rt.mutex.Lock()
+	defer rt.mutex.Unlock()
+
+	// Обновляем углы камеры
+	rt.camera.Yaw += yawDelta
+	rt.camera.Pitch += pitchDelta
+
+	// Ограничиваем углы наклона (pitch), чтобы не перевернуть камеру
+	const maxPitch = math.Pi/2.0 - 0.1 // Немного меньше 90 градусов
+	if rt.camera.Pitch > maxPitch {
+		rt.camera.Pitch = maxPitch
+	} else if rt.camera.Pitch < -maxPitch {
+		rt.camera.Pitch = -maxPitch
+	}
+
+	// Вычисляем новые векторы направления
+	// Сначала вычисляем вектор направления (Forward)
+	rt.camera.Forward.X = math.Cos(rt.camera.Pitch) * math.Sin(rt.camera.Yaw)
+	rt.camera.Forward.Y = math.Sin(rt.camera.Pitch)
+	rt.camera.Forward.Z = math.Cos(rt.camera.Pitch) * math.Cos(rt.camera.Yaw)
+	rt.camera.Forward = rt.camera.Forward.Normalize()
+
+	// Пересчитываем правый вектор (Right) как перпендикулярный Forward и мировому Up
+	worldUp := Vector3{X: 0, Y: 1, Z: 0}
+	rt.camera.Right = worldUp.Cross(rt.camera.Forward).Normalize()
+
+	// Пересчитываем вектор Up как перпендикулярный Forward и Right
+	rt.camera.Up = rt.camera.Forward.Cross(rt.camera.Right).Normalize()
 }
 
 // TraceScene performs ray tracing for the entire scene
 func (rt *Raytracer) TraceScene() *SceneData {
+	rt.mutex.Lock()
+	defer rt.mutex.Unlock()
+
 	// Создаем пустую сцену
 	sceneData := &SceneData{
-		Width:  rt.width,
-		Height: rt.height,
-		Pixels: make([][]TracedPixel, rt.height),
+		Width:          rt.width,
+		Height:         rt.height,
+		Pixels:         make([][]TracedPixel, rt.height),
+		SpecialEffects: make(map[string]float64),
 	}
 
 	// Инициализируем каждую строку пикселей
@@ -200,6 +232,28 @@ func (rt *Raytracer) TraceScene() *SceneData {
 	// Если сцена не задана, просто возвращаем пустую инициализированную сцену
 	if rt.scene == nil {
 		return sceneData
+	}
+
+	// Заполняем информацию о специальных эффектах из сцены
+	if rt.scene.Weather != nil {
+		if fogLevel, ok := rt.scene.Weather["fog"]; ok {
+			sceneData.SpecialEffects["fog"] = fogLevel
+		}
+	}
+
+	// Вычисляем значение темноты в зависимости от времени суток
+	timeOfDay := rt.scene.TimeOfDay
+	if timeOfDay < 0.25 || timeOfDay > 0.75 { // ночь или вечер
+		// Определяем интенсивность темноты
+		darknessIntensity := 0.0
+		if timeOfDay < 0.25 { // ночь
+			// 0.0 (полночь) -> 1.0, 0.25 (утро) -> 0.0
+			darknessIntensity = 1.0 - (timeOfDay / 0.25 * 4.0)
+		} else { // вечер
+			// 0.75 (вечер) -> 0.0, 1.0 (полночь) -> 1.0
+			darknessIntensity = (timeOfDay - 0.75) / 0.25 * 4.0
+		}
+		sceneData.SpecialEffects["darkness"] = darknessIntensity
 	}
 
 	// Use goroutines for parallel ray tracing
@@ -254,11 +308,13 @@ func (rt *Raytracer) TraceScene() *SceneData {
 
 					// Record the result
 					sceneData.Pixels[y][x] = TracedPixel{
-						X:         x,
-						Y:         y,
-						Intensity: calculateIntensity(hitInfo),
-						ObjectID:  hitInfo.ObjectID,
-						Depth:     hitInfo.Distance,
+						X:          x,
+						Y:          y,
+						Intensity:  calculateIntensity(hitInfo),
+						ObjectID:   hitInfo.ObjectID,
+						ObjectType: hitInfo.ObjectType,
+						Depth:      hitInfo.Distance,
+						Normal:     hitInfo.Normal,
 					}
 				}
 			}
@@ -277,141 +333,575 @@ func (rt *Raytracer) trace(ray Ray) HitInfo {
 	hitInfo := HitInfo{
 		Distance:   math.MaxFloat64,
 		ObjectID:   -1,
+		ObjectType: "none",
 		MaterialID: -1,
-		Density:    0,
+		Intensity:  0,
 	}
 
 	// If we have a scene, query it
-	if rt.scene == nil {
-		return hitInfo
-	}
+	if rt.scene != nil {
+		// Проверяем пересечение с ландшафтом
+		terrainHit := rt.traceTerrainIntersection(ray)
 
-	// Сперва пробуем пересечь объекты сцены
-	// Проверяем каждый объект в сцене на пересечение с лучом
-	closestDist := math.MaxFloat64
+		// Если есть пересечение, обновляем информацию о ближайшем объекте
+		if terrainHit.ObjectID != -1 && terrainHit.Distance < hitInfo.Distance {
+			hitInfo = terrainHit
+		}
 
-	// Если в сцене есть объекты
-	if rt.scene.Objects != nil {
+		// Проверяем пересечение с объектами сцены
 		for _, obj := range rt.scene.Objects {
-			// Простая проверка пересечения с бокс-сферой объекта
-			objPos := obj.Position
-			objRadius := math.Max(obj.Scale.X, math.Max(obj.Scale.Y, obj.Scale.Z)) * 0.5
+			objHit := rt.traceObjectIntersection(ray, obj)
 
-			// Проверяем пересечение с примитивной сферой
-			oc := ray.Origin.Sub(objPos)
-			a := ray.Direction.Dot(ray.Direction)
-			b := 2.0 * oc.Dot(ray.Direction)
-			c := oc.Dot(oc) - objRadius*objRadius
-			discriminant := b*b - 4*a*c
-
-			if discriminant > 0 {
-				t := (-b - math.Sqrt(discriminant)) / (2.0 * a)
-				if t > 0.001 && t < closestDist {
-					closestDist = t
-					hitInfo.Distance = t
-					hitInfo.Position = ray.Origin.Add(ray.Direction.Mul(t))
-					hitInfo.Normal = hitInfo.Position.Sub(objPos).Normalize()
-					hitInfo.ObjectID = obj.ID
-
-					// Материал зависит от типа объекта
-					switch obj.Type {
-					case "tree":
-						hitInfo.MaterialID = 1
-					case "rock":
-						hitInfo.MaterialID = 2
-					case "strange":
-						hitInfo.MaterialID = 3
-					default:
-						hitInfo.MaterialID = 1
-					}
-
-					// Для плотности используем комбинацию нормали и угла просмотра
-					viewAngle := math.Abs(hitInfo.Normal.Dot(ray.Direction.Mul(-1)))
-
-					// Учитываем атмосферный страх, если он есть
-					fear := 1.0
-					if val, ok := obj.Metadata["atmosphere.fear"]; ok {
-						fear = val
-					}
-
-					hitInfo.Density = viewAngle * (0.5 + fear*0.5)
-				}
+			// Если есть пересечение и оно ближе текущего, обновляем
+			if objHit.ObjectID != -1 && objHit.Distance < hitInfo.Distance {
+				hitInfo = objHit
 			}
 		}
-	}
 
-	// Если не попали ни в один объект, и есть терраин, пробуем пересечь терраин
-	if hitInfo.ObjectID == -1 && rt.scene.Terrain != nil {
-		// Упрощенное пересечение с плоскостью земли
-		if ray.Direction.Y < 0 {
-			// Плоскость земли находится на y = 0
-			t := -ray.Origin.Y / ray.Direction.Y
-			if t > 0.001 && t < closestDist {
-				hitPos := ray.Origin.Add(ray.Direction.Mul(t))
+		// Добавляем эффект тумана
+		if fogAmount, ok := rt.scene.Weather["fog"]; ok && fogAmount > 0 {
+			// Применяем туман только если был хит
+			if hitInfo.ObjectID != -1 {
+				// Рассчитываем затухание по расстоянию (экспоненциальный туман)
+				fogDensity := 0.05 * fogAmount
+				fogFactor := math.Exp(-fogDensity * hitInfo.Distance)
 
-				// Определяем, находится ли точка пересечения в пределах ландшафта
-				terrainWidth := float64(rt.scene.Terrain.Width)
-				terrainHeight := float64(rt.scene.Terrain.Height)
-				halfWidth := terrainWidth / 2
-				halfHeight := terrainHeight / 2
+				// Ограничиваем до [0, 1]
+				fogFactor = math.Max(0.0, math.Min(1.0, fogFactor))
 
-				if hitPos.X >= -halfWidth && hitPos.X < halfWidth &&
-					hitPos.Z >= -halfHeight && hitPos.Z < halfHeight {
-
-					// Получаем координаты точки в пространстве терраина
-					terrainX := int(hitPos.X + halfWidth)
-					terrainZ := int(hitPos.Z + halfHeight)
-
-					// Получаем высоту и материал в этой точке
-					if terrainX >= 0 && terrainX < int(terrainWidth) &&
-						terrainZ >= 0 && terrainZ < int(terrainHeight) {
-						elevation := rt.scene.Terrain.Data[terrainZ][terrainX]
-						materialID := rt.scene.Terrain.Materials[terrainZ][terrainX]
-
-						// Обновляем информацию о попадании
-						hitInfo.Distance = t
-						hitInfo.Position = hitPos
-						hitInfo.Normal = Vector3{X: 0, Y: 1, Z: 0} // Простая нормаль вверх
-						hitInfo.ObjectID = 1000                    // Специальный ID для терраина
-						hitInfo.MaterialID = materialID
-
-						// Вычисляем плотность на основе высоты и других факторов
-						hitInfo.Density = 0.3 + elevation*0.7
-					}
-				}
-			}
-		}
-	}
-
-	// Если всё ещё нет попадания, рисуем простой тестовый объект чтобы убедиться, что рендер работает
-	if hitInfo.ObjectID == -1 {
-		// Простая сфера для тестирования
-		sphereCenter := Vector3{X: 0, Y: 0, Z: 5}
-		sphereRadius := 2.0
-
-		// Проверяем пересечение со сферой
-		oc := ray.Origin.Sub(sphereCenter)
-		a := ray.Direction.Dot(ray.Direction)
-		b := 2.0 * oc.Dot(ray.Direction)
-		c := oc.Dot(oc) - sphereRadius*sphereRadius
-		discriminant := b*b - 4*a*c
-
-		if discriminant > 0 {
-			t := (-b - math.Sqrt(discriminant)) / (2.0 * a)
-			if t > 0.001 {
-				hitInfo.Distance = t
-				hitInfo.Position = ray.Origin.Add(ray.Direction.Mul(t))
-				hitInfo.Normal = hitInfo.Position.Sub(sphereCenter).Normalize()
-				hitInfo.ObjectID = 999 // Специальный ID для тестовой сферы
-				hitInfo.MaterialID = 0
-
-				// Для плотности используем комбинацию нормали и угла просмотра
-				hitInfo.Density = math.Abs(hitInfo.Normal.Dot(ray.Direction.Mul(-1)))
+				// Смешиваем интенсивность с туманом
+				// Чем дальше объект, тем больше влияния тумана (меньше контраста)
+				fogIntensity := 0.2 // Туман имеет базовую видимость
+				hitInfo.Intensity = hitInfo.Intensity*fogFactor + fogIntensity*(1.0-fogFactor)
 			}
 		}
 	}
 
 	return hitInfo
+}
+
+// traceTerrainIntersection проверяет пересечение луча с ландшафтом
+func (rt *Raytracer) traceTerrainIntersection(ray Ray) HitInfo {
+	hitInfo := HitInfo{
+		Distance:   math.MaxFloat64,
+		ObjectID:   -1,
+		ObjectType: "terrain",
+		MaterialID: 0,
+		Intensity:  0,
+	}
+
+	// Пропускаем, если сцены или ландшафта нет
+	if rt.scene == nil || rt.scene.Terrain == nil {
+		return hitInfo
+	}
+
+	terrain := rt.scene.Terrain
+
+	// Определяем размеры ландшафта
+	terrainSizeX := float64(terrain.Width)
+	terrainSizeZ := float64(terrain.Height)
+	terrainScale := 1.0 // масштаб по Y (высота)
+
+	// Центрируем ландшафт
+	terrainOffset := Vector3{
+		X: -terrainSizeX / 2.0,
+		Y: 0,
+		Z: -terrainSizeZ / 2.0,
+	}
+
+	// Проверяем, может ли луч вообще пересечь плоскость ландшафта
+	// Луч параллелен плоскости Y=0 если ray.Direction.Y почти 0
+	if math.Abs(ray.Direction.Y) < 0.0001 {
+		return hitInfo
+	}
+
+	// Проверяем грубое пересечение с плоскостью ландшафта
+	// Находим расстояние до плоскости Y=0
+	t := -ray.Origin.Y / ray.Direction.Y
+
+	// Только положительные расстояния имеют смысл
+	if t <= 0 {
+		return hitInfo
+	}
+
+	// Находим точку пересечения с плоскостью
+	planeHit := ray.Origin.Add(ray.Direction.Mul(t))
+
+	// Проверяем, попадает ли точка в границы ландшафта
+	localX := planeHit.X - terrainOffset.X
+	localZ := planeHit.Z - terrainOffset.Z
+
+	if localX < 0 || localX >= terrainSizeX || localZ < 0 || localZ >= terrainSizeZ {
+		return hitInfo
+	}
+
+	// Теперь выполняем более точную проверку по высоте ландшафта
+	// Используем билинейную интерполяцию для более точного значения высоты
+	gridX := int(localX)
+	gridZ := int(localZ)
+
+	// Ограничиваем индексы
+	if gridX >= terrain.Width-1 {
+		gridX = terrain.Width - 2
+	}
+	if gridZ >= terrain.Height-1 {
+		gridZ = terrain.Height - 2
+	}
+
+	// Получаем высоты в четырех ближайших точках
+	h00 := terrain.Data[gridZ][gridX] * terrainScale
+	h10 := terrain.Data[gridZ][gridX+1] * terrainScale
+	h01 := terrain.Data[gridZ+1][gridX] * terrainScale
+	h11 := terrain.Data[gridZ+1][gridX+1] * terrainScale
+
+	// Используем дробную часть для интерполяции
+	fracX := localX - float64(gridX)
+	fracZ := localZ - float64(gridZ)
+
+	// Билинейная интерполяция
+	h0 := h00*(1-fracX) + h10*fracX
+	h1 := h01*(1-fracX) + h11*fracX
+	terrainHeight := h0*(1-fracZ) + h1*fracZ
+
+	// Теперь проверяем пересечение луча с этой высотой
+	// Вычисляем время, за которое луч достигнет этой высоты
+	tHeight := (terrainHeight - ray.Origin.Y) / ray.Direction.Y
+
+	if tHeight <= 0 {
+		return hitInfo
+	}
+
+	// Находим точку пересечения
+	hitPoint := ray.Origin.Add(ray.Direction.Mul(tHeight))
+
+	// Проверяем, находится ли точка в границах ландшафта
+	hitLocalX := hitPoint.X - terrainOffset.X
+	hitLocalZ := hitPoint.Z - terrainOffset.Z
+
+	if hitLocalX < 0 || hitLocalX >= terrainSizeX || hitLocalZ < 0 || hitLocalZ >= terrainSizeZ {
+		return hitInfo
+	}
+
+	// Вычисляем нормаль к поверхности ландшафта
+	// Градиент по X и Z дает нам направление склона
+	gradX := (h10-h00)*(1-fracZ) + (h11-h01)*fracZ
+	gradZ := (h01-h00)*(1-fracX) + (h11-h10)*fracX
+
+	// Нормаль - это вектор, перпендикулярный поверхности
+	normal := Vector3{X: -gradX, Y: 1.0, Z: -gradZ}.Normalize()
+
+	// Получаем материал в точке
+	materialID := 0
+	if gridZ < len(terrain.Materials) && gridX < len(terrain.Materials[gridZ]) {
+		materialID = terrain.Materials[gridZ][gridX]
+	}
+
+	// Определяем интенсивность в зависимости от материала и освещения
+	intensity := computeTerrainIntensity(normal, materialID, rt.scene.TimeOfDay)
+
+	// Заполняем информацию о пересечении
+	hitInfo.Distance = tHeight
+	hitInfo.Position = hitPoint
+	hitInfo.Normal = normal
+	hitInfo.ObjectID = 0 // ID ландшафта = 0
+	hitInfo.MaterialID = materialID
+	hitInfo.Intensity = intensity
+
+	return hitInfo
+}
+
+// traceObjectIntersection проверяет пересечение луча с объектом сцены
+func (rt *Raytracer) traceObjectIntersection(ray Ray, obj *ProceduralObject) HitInfo {
+	hitInfo := HitInfo{
+		Distance:   math.MaxFloat64,
+		ObjectID:   -1,
+		ObjectType: "none",
+		MaterialID: -1,
+		Intensity:  0,
+	}
+
+	// В зависимости от типа объекта проверяем разные примитивы
+	switch obj.Type {
+	case "tree":
+		// Упрощаем дерево как цилиндр для ствола и сферу для кроны
+		trunkHit := rt.traceCylinderIntersection(ray,
+			obj.Position,
+			obj.Position.Add(Vector3{X: 0, Y: obj.Scale.Y * 0.6, Z: 0}),
+			obj.Scale.X*0.3)
+
+		crownCenter := obj.Position.Add(Vector3{X: 0, Y: obj.Scale.Y * 0.7, Z: 0})
+		crownHit := rt.traceSphereIntersection(ray, crownCenter, obj.Scale.X*0.8)
+
+		// Выбираем ближайшее пересечение
+		if trunkHit.ObjectID != -1 && (crownHit.ObjectID == -1 || trunkHit.Distance < crownHit.Distance) {
+			hitInfo = trunkHit
+			hitInfo.ObjectID = obj.ID
+			hitInfo.ObjectType = "tree_trunk"
+			hitInfo.Intensity = 0.6 // Ствол темнее
+		} else if crownHit.ObjectID != -1 {
+			hitInfo = crownHit
+			hitInfo.ObjectID = obj.ID
+			hitInfo.ObjectType = "tree_crown"
+			hitInfo.Intensity = 0.4 // Крона дерева темнее
+		}
+
+	case "rock":
+		// Упрощаем камень как эллипсоид
+		rockHit := rt.traceEllipsoidIntersection(ray, obj.Position, obj.Scale)
+
+		if rockHit.ObjectID != -1 {
+			hitInfo = rockHit
+			hitInfo.ObjectID = obj.ID
+			hitInfo.ObjectType = "rock"
+			hitInfo.Intensity = 0.7 // Камни светлее
+		}
+
+	case "strange":
+		// Странные объекты как искаженные сферы
+		strangeHit := rt.traceDistortedSphereIntersection(ray, obj.Position, obj.Scale.X, obj.Seed)
+
+		if strangeHit.ObjectID != -1 {
+			hitInfo = strangeHit
+			hitInfo.ObjectID = obj.ID
+			hitInfo.ObjectType = "strange"
+			hitInfo.Intensity = 0.2 // Странные объекты темные
+		}
+
+	default:
+		// Для прочих объектов используем сферу
+		sphereHit := rt.traceSphereIntersection(ray, obj.Position, obj.Scale.X)
+
+		if sphereHit.ObjectID != -1 {
+			hitInfo = sphereHit
+			hitInfo.ObjectID = obj.ID
+			hitInfo.ObjectType = obj.Type
+			hitInfo.Intensity = 0.5 // Средняя интенсивность
+		}
+	}
+
+	return hitInfo
+}
+
+// traceSphereIntersection проверяет пересечение луча со сферой
+func (rt *Raytracer) traceSphereIntersection(ray Ray, center Vector3, radius float64) HitInfo {
+	hitInfo := HitInfo{
+		Distance:   math.MaxFloat64,
+		ObjectID:   -1,
+		MaterialID: 1, // Материал по умолчанию для сферы
+		Intensity:  0,
+	}
+
+	// Вектор от начала луча до центра сферы
+	oc := ray.Origin.Sub(center)
+
+	// Коэффициенты квадратного уравнения t^2*dot(d,d) + 2*t*dot(oc,d) + dot(oc,oc) - r^2 = 0
+	a := ray.Direction.Dot(ray.Direction)
+	b := 2.0 * oc.Dot(ray.Direction)
+	c := oc.Dot(oc) - radius*radius
+
+	discriminant := b*b - 4*a*c
+
+	if discriminant >= 0 {
+		// Корни квадратного уравнения
+		t := (-b - math.Sqrt(discriminant)) / (2.0 * a)
+
+		// Проверяем, находится ли пересечение впереди луча
+		if t > 0.001 {
+			hitInfo.Distance = t
+			hitInfo.Position = ray.Origin.Add(ray.Direction.Mul(t))
+			hitInfo.Normal = hitInfo.Position.Sub(center).Normalize()
+			hitInfo.ObjectID = 1 // Временный ID
+
+			// Интенсивность зависит от угла между нормалью и вектором к наблюдателю
+			hitInfo.Intensity = math.Abs(hitInfo.Normal.Dot(ray.Direction.Mul(-1)))
+		}
+	}
+
+	return hitInfo
+}
+
+// traceCylinderIntersection проверяет пересечение луча с цилиндром
+func (rt *Raytracer) traceCylinderIntersection(ray Ray, baseCenter, topCenter Vector3, radius float64) HitInfo {
+	hitInfo := HitInfo{
+		Distance:   math.MaxFloat64,
+		ObjectID:   -1,
+		MaterialID: 2, // Материал по умолчанию для цилиндра
+		Intensity:  0,
+	}
+
+	// Ось цилиндра
+	axis := topCenter.Sub(baseCenter).Normalize()
+	height := topCenter.Sub(baseCenter).Length()
+
+	// Проекция направления луча на ось цилиндра
+	dirDotAxis := ray.Direction.Dot(axis)
+
+	// Вектор от начала луча до центра нижнего основания
+	oc := ray.Origin.Sub(baseCenter)
+
+	// Проекция oc на ось
+	ocDotAxis := oc.Dot(axis)
+
+	// Вычисляем коэффициенты для квадратного уравнения
+	a := 1.0 - dirDotAxis*dirDotAxis
+	b := 2.0 * (oc.Dot(ray.Direction) - ocDotAxis*dirDotAxis)
+	c := oc.Dot(oc) - ocDotAxis*ocDotAxis - radius*radius
+
+	// Решаем квадратное уравнение
+	discriminant := b*b - 4*a*c
+
+	if discriminant >= 0 && a != 0 {
+		// Находим ближайший корень
+		t := (-b - math.Sqrt(discriminant)) / (2.0 * a)
+
+		if t > 0.001 {
+			// Точка пересечения с бесконечным цилиндром
+			hitPos := ray.Origin.Add(ray.Direction.Mul(t))
+
+			// Проверяем, находится ли точка между основаниями
+			hitPosRelative := hitPos.Sub(baseCenter)
+			hitHeight := hitPosRelative.Dot(axis)
+
+			if hitHeight >= 0 && hitHeight <= height {
+				hitInfo.Distance = t
+				hitInfo.Position = hitPos
+
+				// Нормаль к поверхности цилиндра
+				projectionOnAxis := axis.Mul(hitHeight)
+				hitInfo.Normal = hitPos.Sub(baseCenter.Add(projectionOnAxis)).Normalize()
+				hitInfo.ObjectID = 1 // Временный ID
+
+				// Интенсивность зависит от угла между нормалью и вектором к наблюдателю
+				hitInfo.Intensity = math.Abs(hitInfo.Normal.Dot(ray.Direction.Mul(-1)))
+			}
+		}
+	}
+
+	// Проверяем пересечение с нижним основанием
+	tBase := intersectPlane(ray, baseCenter, axis.Mul(-1))
+	if tBase > 0.001 && tBase < hitInfo.Distance {
+		// Точка пересечения
+		hitPos := ray.Origin.Add(ray.Direction.Mul(tBase))
+
+		// Проверяем, находится ли точка внутри круга основания
+		distanceFromBase := hitPos.Sub(baseCenter)
+		distanceFromBase = distanceFromBase.Sub(axis.Mul(distanceFromBase.Dot(axis)))
+
+		if distanceFromBase.Length() <= radius {
+			hitInfo.Distance = tBase
+			hitInfo.Position = hitPos
+			hitInfo.Normal = axis.Mul(-1)
+			hitInfo.ObjectID = 1 // Временный ID
+			hitInfo.Intensity = math.Abs(hitInfo.Normal.Dot(ray.Direction.Mul(-1)))
+		}
+	}
+
+	// Проверяем пересечение с верхним основанием
+	tTop := intersectPlane(ray, topCenter, axis)
+	if tTop > 0.001 && tTop < hitInfo.Distance {
+		// Точка пересечения
+		hitPos := ray.Origin.Add(ray.Direction.Mul(tTop))
+
+		// Проверяем, находится ли точка внутри круга основания
+		distanceFromTop := hitPos.Sub(topCenter)
+		distanceFromTop = distanceFromTop.Sub(axis.Mul(distanceFromTop.Dot(axis)))
+
+		if distanceFromTop.Length() <= radius {
+			hitInfo.Distance = tTop
+			hitInfo.Position = hitPos
+			hitInfo.Normal = axis
+			hitInfo.ObjectID = 1 // Временный ID
+			hitInfo.Intensity = math.Abs(hitInfo.Normal.Dot(ray.Direction.Mul(-1)))
+		}
+	}
+
+	return hitInfo
+}
+
+// intersectPlane находит расстояние до пересечения с плоскостью
+func intersectPlane(ray Ray, pointOnPlane Vector3, normal Vector3) float64 {
+	denom := ray.Direction.Dot(normal)
+
+	if math.Abs(denom) < 0.0001 {
+		return math.MaxFloat64 // Луч параллелен плоскости
+	}
+
+	t := pointOnPlane.Sub(ray.Origin).Dot(normal) / denom
+	return t
+}
+
+// traceEllipsoidIntersection проверяет пересечение луча с эллипсоидом
+func (rt *Raytracer) traceEllipsoidIntersection(ray Ray, center Vector3, scale Vector3) HitInfo {
+	hitInfo := HitInfo{
+		Distance:   math.MaxFloat64,
+		ObjectID:   -1,
+		MaterialID: 3, // Материал по умолчанию для эллипсоида
+		Intensity:  0,
+	}
+
+	// Преобразуем луч в пространство сферы, деля координаты на соответствующие масштабы
+	invScale := Vector3{X: 1.0 / scale.X, Y: 1.0 / scale.Y, Z: 1.0 / scale.Z}
+
+	// Преобразованный луч
+	transformedOrigin := Vector3{
+		X: (ray.Origin.X - center.X) * invScale.X,
+		Y: (ray.Origin.Y - center.Y) * invScale.Y,
+		Z: (ray.Origin.Z - center.Z) * invScale.Z,
+	}
+
+	transformedDir := Vector3{
+		X: ray.Direction.X * invScale.X,
+		Y: ray.Direction.Y * invScale.Y,
+		Z: ray.Direction.Z * invScale.Z,
+	}
+	normFactor := 1.0 / transformedDir.Length()
+	transformedDir = transformedDir.Normalize()
+
+	// Теперь проверяем пересечение с единичной сферой
+	a := transformedDir.Dot(transformedDir) // всегда 1 после нормализации
+	b := 2.0 * transformedOrigin.Dot(transformedDir)
+	c := transformedOrigin.Dot(transformedOrigin) - 1.0
+
+	discriminant := b*b - 4*a*c
+
+	if discriminant >= 0 {
+		// Корни квадратного уравнения
+		t := (-b - math.Sqrt(discriminant)) / (2.0 * a)
+
+		// Корректируем t с учетом изменения длины направляющего вектора
+		t *= normFactor
+
+		// Проверяем, находится ли пересечение впереди луча
+		if t > 0.001 {
+			hitInfo.Distance = t
+			hitInfo.Position = ray.Origin.Add(ray.Direction.Mul(t))
+
+			// Вычисляем нормаль к эллипсоиду
+			localPos := Vector3{
+				X: (hitInfo.Position.X - center.X) / scale.X,
+				Y: (hitInfo.Position.Y - center.Y) / scale.Y,
+				Z: (hitInfo.Position.Z - center.Z) / scale.Z,
+			}
+
+			// Преобразование нормали обратно в мировое пространство
+			normal := Vector3{
+				X: localPos.X / scale.X,
+				Y: localPos.Y / scale.Y,
+				Z: localPos.Z / scale.Z,
+			}.Normalize()
+
+			hitInfo.Normal = normal
+			hitInfo.ObjectID = 1 // Временный ID
+
+			// Интенсивность зависит от угла между нормалью и вектором к наблюдателю
+			hitInfo.Intensity = math.Abs(hitInfo.Normal.Dot(ray.Direction.Mul(-1)))
+		}
+	}
+
+	return hitInfo
+}
+
+// traceDistortedSphereIntersection проверяет пересечение луча с искаженной сферой
+func (rt *Raytracer) traceDistortedSphereIntersection(ray Ray, center Vector3, radius float64, seed int64) HitInfo {
+	hitInfo := HitInfo{
+		Distance:   math.MaxFloat64,
+		ObjectID:   -1,
+		MaterialID: 4, // Материал по умолчанию для искаженной сферы
+		Intensity:  0,
+	}
+
+	// Сначала проверяем пересечение с обычной сферой
+	sphereHit := rt.traceSphereIntersection(ray, center, radius)
+
+	if sphereHit.ObjectID != -1 {
+		hitInfo = sphereHit
+		hitInfo.ObjectID = 1 // Временный ID
+
+		// Теперь искажаем нормаль и позицию для создания неровной поверхности
+		// Используем seed для воспроизводимости искажений
+		distortAmount := 0.2
+
+		// Преобразуем координаты хита в сферические для искажения
+		localPos := hitInfo.Position.Sub(center)
+
+		// Используем координаты как входы для шума
+		distX := math.Sin((localPos.X+float64(seed))*0.5) * distortAmount
+		distY := math.Sin((localPos.Y+float64(seed))*0.5) * distortAmount
+		distZ := math.Sin((localPos.Z+float64(seed))*0.5) * distortAmount
+
+		// Искажаем нормаль
+		distortedNormal := Vector3{
+			X: hitInfo.Normal.X + distX,
+			Y: hitInfo.Normal.Y + distY,
+			Z: hitInfo.Normal.Z + distZ,
+		}.Normalize()
+
+		hitInfo.Normal = distortedNormal
+
+		// Делаем странные объекты более темными и контрастными
+		hitInfo.Intensity = math.Abs(hitInfo.Normal.Dot(ray.Direction.Mul(-1))) * 0.7
+	}
+
+	return hitInfo
+}
+
+// computeTerrainIntensity вычисляет интенсивность точки на ландшафте
+func computeTerrainIntensity(normal Vector3, materialID int, timeOfDay float64) float64 {
+	// Направление света зависит от времени суток
+	lightAngle := timeOfDay * 2.0 * math.Pi // полный круг за день
+	lightDir := Vector3{
+		X: math.Cos(lightAngle),
+		Y: math.Sin(lightAngle), // Солнце высоко в полдень, низко утром/вечером
+		Z: 0,
+	}.Normalize()
+
+	// Свет не светит снизу (ночью)
+	if lightDir.Y < 0 {
+		lightDir.Y = 0
+		lightDir = lightDir.Normalize()
+	}
+
+	// Вычисляем базовую интенсивность как скалярное произведение нормали и направления света
+	baseIntensity := normal.Dot(lightDir)
+
+	// Ограничиваем минимальную интенсивность для имитации рассеянного света
+	baseIntensity = math.Max(0.1, baseIntensity)
+
+	// Различные материалы имеют разную базовую яркость
+	materialBrightness := 0.5 // по умолчанию
+
+	switch materialID {
+	case 1: // Вода
+		materialBrightness = 0.7
+	case 2: // Земля
+		materialBrightness = 0.5
+	case 3: // Камень
+		materialBrightness = 0.6
+	case 4: // Снег
+		materialBrightness = 0.9
+	}
+
+	// Ночью все темнее
+	if timeOfDay < 0.25 || timeOfDay > 0.75 {
+		nightFactor := 0.3 // базовая ночная освещенность
+
+		// Интенсивность ночного эффекта
+		var nightIntensity float64
+		if timeOfDay < 0.25 { // ночь до рассвета
+			nightIntensity = 1.0 - timeOfDay/0.25
+		} else { // ночь после заката
+			nightIntensity = (timeOfDay - 0.75) / 0.25
+		}
+
+		// Интерполируем между дневной и ночной интенсивностью
+		baseIntensity = baseIntensity*(1.0-nightIntensity) + nightFactor*nightIntensity
+	}
+
+	// Учитываем материал
+	intensity := baseIntensity * materialBrightness
+
+	// Ограничиваем диапазон
+	return math.Max(0.1, math.Min(1.0, intensity))
 }
 
 // calculateIntensity converts hit information to a normalized intensity value for ASCII rendering
@@ -420,33 +910,27 @@ func calculateIntensity(hit HitInfo) float64 {
 		return 0 // No hit, darkness
 	}
 
-	// Начальное значение интенсивности на основе плотности
-	intensity := hit.Density
+	// Use the intensity calculated during ray tracing
+	intensity := hit.Intensity
 
-	// Изменяем интенсивность в зависимости от типа объекта
-	if hit.ObjectID >= 1000 {
-		// Это терраин, немного увеличиваем базовую яркость
+	// Adjust based on object type for more artistic control
+	switch hit.ObjectType {
+	case "terrain":
+		// Земля немного ярче для лучшей видимости
+		intensity *= 1.1
+	case "tree_trunk":
+		// Стволы деревьев темные
 		intensity *= 0.8
-	} else if hit.ObjectID == 999 {
-		// Тестовая сфера, делаем её более яркой
-		intensity = math.Min(intensity*1.5, 1.0)
-	} else {
-		// Обычные объекты, корректируем интенсивность в зависимости от материала
-		switch hit.MaterialID {
-		case 1: // Деревья
-			intensity *= 0.7
-		case 2: // Камни
-			intensity *= 0.9
-		case 3: // Странные объекты
-			intensity *= 1.2 // Можно даже выйти за пределы 1.0 для особого эффекта
-		}
+	case "tree_crown":
+		// Кроны деревьев средней яркости
+		intensity *= 0.9
+	case "rock":
+		// Камни чуть ярче для заметности
+		intensity *= 1.2
+	case "strange":
+		// Странные объекты очень темные и контрастные
+		intensity = math.Pow(intensity, 1.5) * 0.8
 	}
-
-	// Добавим немного базовой яркости, чтобы не было полностью чёрных объектов
-	intensity = 0.1 + 0.9*intensity
-
-	// Применяем небольшую корректировку гаммы для лучшей видимости
-	intensity = math.Pow(intensity, 0.8)
 
 	// Ensure it's in 0-1 range
 	if intensity < 0 {
@@ -456,13 +940,4 @@ func calculateIntensity(hit HitInfo) float64 {
 	}
 
 	return intensity
-}
-
-// Cross вычисляет векторное произведение двух векторов
-func (v Vector3) Cross(other Vector3) Vector3 {
-	return Vector3{
-		X: v.Y*other.Z - v.Z*other.Y,
-		Y: v.Z*other.X - v.X*other.Z,
-		Z: v.X*other.Y - v.Y*other.X,
-	}
 }

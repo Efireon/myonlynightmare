@@ -571,14 +571,6 @@ func baseFreqToAngular(freqHz float64) float64 {
 	return 2.0 * math.Pi * freqHz
 }
 
-// getMetadataValue safely gets a value from metadata with a default fallback
-func getMetadataValue(metadata map[string]float64, key string, defaultValue float64) float64 {
-	if value, ok := metadata[key]; ok {
-		return value
-	}
-	return defaultValue
-}
-
 // GenerateAmbientSoundscape generates a complete ambient soundscape
 func (pag *ProceduralAudioGenerator) GenerateAmbientSoundscape(durationSeconds float64, metadata map[string]float64, ng *noise.NoiseGenerator) []float32 {
 	// Create a layered soundscape with multiple elements
