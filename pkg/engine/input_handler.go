@@ -60,8 +60,17 @@ func (ih *InputHandler) Update() {
 	ih.mouseDelta[0] = ih.currentMousePos[0] - ih.previousMousePos[0]
 	ih.mouseDelta[1] = ih.currentMousePos[1] - ih.previousMousePos[1]
 
-	// Сканируем все отслеживаемые клавиши
-	for key := glfw.KeyUnknown; key <= glfw.KeyLast; key++ {
+	// Сканируем только известные клавиши, которые нам нужны
+	// Избегаем использования glfw.KeyUnknown (-1), которое вызывает ошибку
+	monitoredKeys := []glfw.Key{
+		glfw.KeyEscape, glfw.KeyW, glfw.KeyA, glfw.KeyS, glfw.KeyD,
+		glfw.KeyUp, glfw.KeyDown, glfw.KeyLeft, glfw.KeyRight,
+		glfw.KeySpace, glfw.KeyEqual, glfw.KeyMinus,
+		glfw.KeyKPAdd, glfw.KeyKPSubtract, glfw.KeyM,
+	}
+
+	// Обновляем состояние только для наблюдаемых клавиш
+	for _, key := range monitoredKeys {
 		ih.currentKeys[key] = ih.window.GetKey(key) == glfw.Press
 	}
 
