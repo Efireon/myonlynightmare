@@ -2,50 +2,6 @@ package engine
 
 // Shader sources for the pixel-based renderer
 
-// Basic vertex shader for rendering sprites
-const pixelVertexShaderSource = `
-#version 410 core
-layout (location = 0) in vec3 aPos;
-layout (location = 1) in vec2 aTexCoord;
-
-out vec2 TexCoord;
-
-void main() {
-    gl_Position = vec4(aPos, 1.0);
-    TexCoord = aTexCoord;
-}
-`
-
-// Fragment shader for rendering sprites
-const pixelFragmentShaderSource = `
-#version 410 core
-in vec2 TexCoord;
-out vec4 FragColor;
-
-uniform sampler2D spriteTexture;
-uniform vec3 objectColor;
-uniform float visibility;
-
-void main() {
-    // Sample the texture
-    vec4 texColor = texture(spriteTexture, TexCoord);
-    
-    // Use texture color or object color
-    vec4 color;
-    if (texColor.a > 0.0) {
-        color = texColor;
-    } else {
-        color = vec4(objectColor, 1.0);
-    }
-    
-    // Apply visibility/fog
-    color.a *= visibility;
-    
-    // Output color
-    FragColor = color;
-}
-`
-
 // Vertex shader for post-processing effects
 const postProcessVertexShader = `
 #version 410 core
@@ -59,14 +15,12 @@ void main() {
     TexCoord = aTexCoord;
 }
 `
-
-// Fragment shader for post-processing effects
 const postProcessFragmentShaderSource = `
 #version 410 core
 in vec2 TexCoord;
 out vec4 FragColor;
 
-uniform sampler2D screenTexture;
+uniform sampler2D screenTexture;  // Make sure this name matches in the shader and the uniform location
 uniform float time;
 uniform float glitchAmount;
 uniform float vignetteAmount;
@@ -93,6 +47,15 @@ float noise(vec2 p) {
 }
 
 void main() {
+    // Debug - uncomment to output a checkered pattern to verify shader is running
+    // if (mod(floor(TexCoord.x * 10.0) + floor(TexCoord.y * 10.0), 2.0) < 1.0) {
+    //     FragColor = vec4(1.0, 0.0, 0.0, 1.0); // Red
+    //     return;
+    // } else {
+    //     FragColor = vec4(0.0, 1.0, 0.0, 1.0); // Green
+    //     return;
+    // }
+    
     // Pixelation effect - calculate pixel grid coordinates
     vec2 pixelSize = vec2(float(pixelSize)) / resolution;
     vec2 pixelCoord = floor(TexCoord / pixelSize) * pixelSize;
@@ -131,6 +94,14 @@ void main() {
     
     // Sample the pixelated screen texture
     vec4 color = texture(screenTexture, texCoord);
+    
+    // If the texture returns empty, draw a colored pattern
+    if (color.a < 0.01) {
+        FragColor = vec4(0.5 + 0.5 * sin(time + TexCoord.x * 10.0), 
+                          0.5 + 0.5 * cos(time + TexCoord.y * 10.0),
+                          0.5, 1.0);
+        return;
+    }
     
     // Apply vignette effect
     float distanceFromCenter = length(texCoord - 0.5) * 2.0;

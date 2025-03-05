@@ -229,53 +229,6 @@ func (e *Engine) render() {
 	}
 }
 
-// createSceneData prepares scene data for the renderer
-func (e *Engine) createSceneData() *SceneData {
-	if e.procedural == nil || e.procedural.GetCurrentScene() == nil {
-		return nil
-	}
-
-	procScene := e.procedural.GetCurrentScene()
-	playerPos := e.physics.GetPlayer().Position
-	viewDir := e.physics.GetPlayer().Direction
-
-	// Create scene data
-	scene := NewSceneData(e.config.Renderer.Width, e.config.Renderer.Height)
-	scene.PlayerPosition = playerPos
-	scene.ViewDirection = viewDir
-	scene.TimeOfDay = procScene.TimeOfDay
-
-	// Copy atmosphere data
-	for k, v := range procScene.Atmosphere {
-		scene.Atmosphere[k] = v
-	}
-
-	// Add special effects
-	if procScene.Weather != nil {
-		// Add fog from weather
-		if fogAmount, ok := procScene.Weather["fog"]; ok {
-			scene.SetSpecialEffect("fog", fogAmount)
-		}
-	}
-
-	// Add darkness based on time of day
-	timeOfDay := procScene.TimeOfDay
-	if timeOfDay < 0.25 || timeOfDay > 0.75 { // night or evening
-		var darkness float64
-		if timeOfDay < 0.25 { // night
-			darkness = 1.0 - (timeOfDay / 0.25 * 4.0)
-		} else { // evening
-			darkness = (timeOfDay - 0.75) / 0.25 * 4.0
-		}
-		scene.SetSpecialEffect("darkness", darkness)
-	}
-
-	// Calculate objects in view
-	e.populateObjectsInView(scene, procScene, playerPos, viewDir)
-
-	return scene
-}
-
 // populateObjectsInView calculates which objects are in the player's view
 func (e *Engine) populateObjectsInView(scene *SceneData, procScene *ProceduralScene, playerPos, viewDir Vector3) {
 	// Field of view in radians
