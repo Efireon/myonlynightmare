@@ -14,14 +14,13 @@ import (
 
 // ProceduralObject represents a procedurally generated object
 type ProceduralObject struct {
-	ID         int
-	Type       string             // Type of object (tree, rock, terrain, etc.)
-	Position   Vector3            // Position in world space
-	Scale      Vector3            // Scale of the object
-	Rotation   Vector3            // Rotation of the object (in radians)
-	Metadata   map[string]float64 // Hierarchical metadata with weights
-	Seed       int64              // Seed for reproducibility
-	ASCIIModel *ASCIITexture      // ASCII representation for advanced rendering
+	ID       int
+	Type     string             // Type of object (tree, rock, terrain, etc.)
+	Position Vector3            // Position in world space
+	Scale    Vector3            // Scale of the object
+	Rotation Vector3            // Rotation of the object (in radians)
+	Metadata map[string]float64 // Hierarchical metadata with weights
+	Seed     int64              // Seed for reproducibility
 }
 
 // ProceduralScene represents the current procedural scene
